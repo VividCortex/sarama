@@ -1,6 +1,8 @@
 package sarama
 
 import (
+	"github.com/VividCortex/snappy-go/snappy"
+
 	"bytes"
 	"compress/gzip"
 	"fmt"
