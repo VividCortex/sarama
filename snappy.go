@@ -2,10 +2,8 @@ package sarama
 
 import (
 	"bytes"
-	//"code.google.com/p/snappy-go/snappy"
 	"encoding/binary"
 	_ "fmt"
-
 	"github.com/VividCortex/snappy-go/snappy"
 )
 
