@@ -33,20 +33,20 @@ func TestSimpleConsumer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer safeClose(t, client)
 
 	consumer, err := NewConsumer(client, "my_topic", 0, "my_consumer_group", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer consumer.Close()
+	defer safeClose(t, consumer)
 	defer mb1.Close()
 	defer mb2.Close()
 
 	for i := 0; i < 10; i++ {
 		event := <-consumer.Events()
 		if event.Err != nil {
-			t.Error(err)
+			t.Error(event.Err)
 		}
 		if event.Offset != int64(i) {
 			t.Error("Incorrect message offset!")
@@ -69,7 +69,7 @@ func TestConsumerRawOffset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer safeClose(t, client)
 
 	config := NewConsumerConfig()
 	config.OffsetMethod = OffsetMethodManual
@@ -78,7 +78,7 @@ func TestConsumerRawOffset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer consumer.Close()
+	defer safeClose(t, consumer)
 
 	defer mb1.Close()
 	defer mb2.Close()
@@ -106,7 +106,7 @@ func TestConsumerLatestOffset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer safeClose(t, client)
 
 	config := NewConsumerConfig()
 	config.OffsetMethod = OffsetMethodNewest
@@ -114,13 +114,54 @@ func TestConsumerLatestOffset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer consumer.Close()
+	defer safeClose(t, consumer)
 
 	defer mb2.Close()
 	defer mb1.Close()
 
 	if consumer.offset != 0x010101 {
 		t.Error("Latest offset not fetched correctly")
+	}
+}
+
+func TestConsumerPrelude(t *testing.T) {
+	mb1 := NewMockBroker(t, 1)
+	mb2 := NewMockBroker(t, 2)
+
+	mdr := new(MetadataResponse)
+	mdr.AddBroker(mb2.Addr(), mb2.BrokerID())
+	mdr.AddTopicPartition("my_topic", 0, 2)
+	mb1.Returns(mdr)
+
+	fr := new(FetchResponse)
+	fr.AddMessage("my_topic", 0, nil, ByteEncoder([]byte{0x00, 0x0E}), int64(0))
+	fr.AddMessage("my_topic", 0, nil, ByteEncoder([]byte{0x00, 0x0E}), int64(1))
+	mb2.Returns(fr)
+
+	client, err := NewClient("client_id", []string{mb1.Addr()}, nil)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	config := NewConsumerConfig()
+	config.OffsetMethod = OffsetMethodManual
+	config.OffsetValue = 1
+	consumer, err := NewConsumer(client, "my_topic", 0, "my_consumer_group", config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	defer mb1.Close()
+	defer mb2.Close()
+
+	event := <-consumer.Events()
+	if event.Err != nil {
+		t.Error(event.Err)
+	}
+	if event.Offset != 1 {
+		t.Error("Incorrect message offset!")
 	}
 }
 

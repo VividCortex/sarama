@@ -8,9 +8,10 @@ import (
 
 // ClientConfig is used to pass multiple configuration options to NewClient.
 type ClientConfig struct {
-	MetadataRetries   int           // How many times to retry a metadata request when a partition is in the middle of leader election.
-	WaitForElection   time.Duration // How long to wait for leader election to finish between retries.
-	DefaultBrokerConf *BrokerConfig // Default configuration for broker connections created by this client.
+	MetadataRetries            int           // How many times to retry a metadata request when a partition is in the middle of leader election.
+	WaitForElection            time.Duration // How long to wait for leader election to finish between retries.
+	DefaultBrokerConf          *BrokerConfig // Default configuration for broker connections created by this client.
+	BackgroundRefreshFrequency time.Duration // How frequently the client will refresh the cluster metadata in the background. Defaults to 10 minutes. Set to 0 to disable.
 }
 
 // Client is a generic Kafka client. It manages connections to one or more Kafka brokers.
@@ -24,9 +25,9 @@ type Client struct {
 	// the broker addresses given to us through the constructor are not guaranteed to be returned in
 	// the cluster metadata (I *think* it only returns brokers who are currently leading partitions?)
 	// so we store them separately
-	extraBrokerAddrs []string
-	extraBroker      *Broker
-	deadBrokerAddrs  []string
+	seedBrokerAddrs []string
+	seedBroker      *Broker
+	deadBrokerAddrs map[string]struct{}
 
 	brokers map[int32]*Broker          // maps broker ids to brokers
 	leaders map[string]map[int32]int32 // maps topics to partition ids to broker ids
@@ -52,21 +53,29 @@ func NewClient(id string, addrs []string, config *ClientConfig) (*Client, error)
 	}
 
 	client := &Client{
-		id:               id,
-		config:           *config,
-		extraBrokerAddrs: addrs,
-		extraBroker:      NewBroker(addrs[0]),
-		brokers:          make(map[int32]*Broker),
-		leaders:          make(map[string]map[int32]int32),
+		id:              id,
+		config:          *config,
+		seedBrokerAddrs: addrs,
+		seedBroker:      NewBroker(addrs[0]),
+		deadBrokerAddrs: make(map[string]struct{}),
+		brokers:         make(map[int32]*Broker),
+		leaders:         make(map[string]map[int32]int32),
 	}
-	client.extraBroker.Open(config.DefaultBrokerConf)
+	client.seedBroker.Open(config.DefaultBrokerConf)
 
 	// do an initial fetch of all cluster metadata by specifing an empty list of topics
 	err := client.RefreshAllMetadata()
-	if err != nil {
+	switch err {
+	case nil:
+		break
+	case LeaderNotAvailable:
+		// indicates that maybe part of the cluster is down, but is not fatal to creating the client
+		Logger.Println(err)
+	default:
 		client.Close()
 		return nil, err
 	}
+	go withRecover(client.backgroundMetadataUpdater)
 
 	Logger.Println("Successfully initialized new client")
 
@@ -90,14 +99,13 @@ func (client *Client) Close() error {
 	Logger.Println("Closing Client")
 
 	for _, broker := range client.brokers {
-		myBroker := broker // NB: block-local prevents clobbering
-		go withRecover(func() { myBroker.Close() })
+		safeAsyncClose(broker)
 	}
 	client.brokers = nil
 	client.leaders = nil
 
-	if client.extraBroker != nil {
-		go withRecover(func() { client.extraBroker.Close() })
+	if client.seedBroker != nil {
+		safeAsyncClose(client.seedBroker)
 	}
 
 	return nil
@@ -224,15 +232,15 @@ func (client *Client) disconnectBroker(broker *Broker) {
 	defer client.lock.Unlock()
 	Logger.Printf("Disconnecting Broker %d\n", broker.ID())
 
-	client.deadBrokerAddrs = append(client.deadBrokerAddrs, broker.addr)
+	client.deadBrokerAddrs[broker.addr] = struct{}{}
 
-	if broker == client.extraBroker {
-		client.extraBrokerAddrs = client.extraBrokerAddrs[1:]
-		if len(client.extraBrokerAddrs) > 0 {
-			client.extraBroker = NewBroker(client.extraBrokerAddrs[0])
-			client.extraBroker.Open(client.config.DefaultBrokerConf)
+	if broker == client.seedBroker {
+		client.seedBrokerAddrs = client.seedBrokerAddrs[1:]
+		if len(client.seedBrokerAddrs) > 0 {
+			client.seedBroker = NewBroker(client.seedBrokerAddrs[0])
+			client.seedBroker.Open(client.config.DefaultBrokerConf)
 		} else {
-			client.extraBroker = nil
+			client.seedBroker = nil
 		}
 	} else {
 		// we don't need to update the leaders hash, it will automatically get refreshed next time because
@@ -240,8 +248,7 @@ func (client *Client) disconnectBroker(broker *Broker) {
 		delete(client.brokers, broker.ID())
 	}
 
-	myBroker := broker // NB: block-local prevents clobbering
-	go withRecover(func() { myBroker.Close() })
+	safeAsyncClose(broker)
 }
 
 func (client *Client) Closed() bool {
@@ -312,22 +319,18 @@ func (client *Client) resurrectDeadBrokers() {
 	client.lock.Lock()
 	defer client.lock.Unlock()
 
-	brokers := make(map[string]struct{})
-	for _, addr := range client.deadBrokerAddrs {
-		brokers[addr] = struct{}{}
-	}
-	for _, addr := range client.extraBrokerAddrs {
-		brokers[addr] = struct{}{}
+	for _, addr := range client.seedBrokerAddrs {
+		client.deadBrokerAddrs[addr] = struct{}{}
 	}
 
-	client.deadBrokerAddrs = []string{}
-	client.extraBrokerAddrs = []string{}
-	for addr := range brokers {
-		client.extraBrokerAddrs = append(client.extraBrokerAddrs, addr)
+	client.seedBrokerAddrs = []string{}
+	for addr := range client.deadBrokerAddrs {
+		client.seedBrokerAddrs = append(client.seedBrokerAddrs, addr)
 	}
+	client.deadBrokerAddrs = make(map[string]struct{})
 
-	client.extraBroker = NewBroker(client.extraBrokerAddrs[0])
-	client.extraBroker.Open(client.config.DefaultBrokerConf)
+	client.seedBroker = NewBroker(client.seedBrokerAddrs[0])
+	client.seedBroker.Open(client.config.DefaultBrokerConf)
 }
 
 func (client *Client) any() *Broker {
@@ -338,7 +341,7 @@ func (client *Client) any() *Broker {
 		return broker
 	}
 
-	return client.extraBroker
+	return client.seedBroker
 }
 
 func (client *Client) cachedLeader(topic string, partitionID int32) *Broker {
@@ -374,6 +377,24 @@ func (client *Client) cachedPartitions(topic string) []int32 {
 	return ret
 }
 
+func (client *Client) backgroundMetadataUpdater() {
+	if client.config.BackgroundRefreshFrequency == time.Duration(0) {
+		return
+	}
+
+	ticker := time.NewTicker(client.config.BackgroundRefreshFrequency)
+	for _ = range ticker.C {
+		if client.Closed() {
+			ticker.Stop()
+			return
+		}
+		err := client.RefreshAllMetadata()
+		if err != nil {
+			Logger.Print("Client background metadata update: ", err)
+		}
+	}
+}
+
 // if no fatal error, returns a list of topics that need retrying due to LeaderNotAvailable
 func (client *Client) update(data *MetadataResponse) ([]string, error) {
 	client.lock.Lock()
@@ -392,8 +413,7 @@ func (client *Client) update(data *MetadataResponse) ([]string, error) {
 			client.brokers[broker.ID()] = broker
 			Logger.Printf("Registered new broker #%d at %s", broker.ID(), broker.Addr())
 		} else if broker.Addr() != client.brokers[broker.ID()].Addr() {
-			myBroker := client.brokers[broker.ID()] // use block-local to prevent clobbering `broker` for Gs
-			go withRecover(func() { myBroker.Close() })
+			safeAsyncClose(client.brokers[broker.ID()])
 			broker.Open(client.config.DefaultBrokerConf)
 			client.brokers[broker.ID()] = broker
 			Logger.Printf("Replaced registered broker #%d with %s", broker.ID(), broker.Addr())
@@ -418,6 +438,14 @@ func (client *Client) update(data *MetadataResponse) ([]string, error) {
 				toRetry[topic.Name] = true
 				delete(client.leaders[topic.Name], partition.ID)
 			case NoError:
+				broker := client.brokers[partition.Leader]
+				if _, present := client.deadBrokerAddrs[broker.Addr()]; present {
+					if connected, _ := broker.Connected(); !connected {
+						toRetry[topic.Name] = true
+						delete(client.leaders[topic.Name], partition.ID)
+						continue
+					}
+				}
 				client.leaders[topic.Name][partition.ID] = partition.Leader
 			default:
 				return nil, partition.Err
@@ -435,8 +463,9 @@ func (client *Client) update(data *MetadataResponse) ([]string, error) {
 // NewClientConfig creates a new ClientConfig instance with sensible defaults
 func NewClientConfig() *ClientConfig {
 	return &ClientConfig{
-		MetadataRetries: 3,
-		WaitForElection: 250 * time.Millisecond,
+		MetadataRetries:            3,
+		WaitForElection:            250 * time.Millisecond,
+		BackgroundRefreshFrequency: 10 * time.Minute,
 	}
 }
 
@@ -455,6 +484,10 @@ func (config *ClientConfig) Validate() error {
 		if err := config.DefaultBrokerConf.Validate(); err != nil {
 			return err
 		}
+	}
+
+	if config.BackgroundRefreshFrequency < time.Duration(0) {
+		return ConfigurationError("Invalid BackgroundRefreshFrequency.")
 	}
 
 	return nil

@@ -38,6 +38,9 @@ var EncodingError = errors.New("kafka: Error while encoding packet.")
 // of the message set.
 var InsufficientData = errors.New("kafka: Insufficient data to decode packet, more bytes expected.")
 
+// ShuttingDown is returned when a producer receives a message during shutdown.
+var ShuttingDown = errors.New("kafka: Message received by producer in process of shutting down.")
+
 // DecodingError is returned when there was an error (other than truncated data) decoding the Kafka broker's response.
 // This can be a bad CRC or length field, or any other invalid value.
 type DecodingError struct {
@@ -89,6 +92,7 @@ const (
 	NotLeaderForPartition           KError = 6
 	RequestTimedOut                 KError = 7
 	BrokerNotAvailable              KError = 8
+	ReplicaNotAvailable             KError = 9
 	MessageSizeTooLarge             KError = 10
 	StaleControllerEpochCode        KError = 11
 	OffsetMetadataTooLarge          KError = 12
@@ -121,6 +125,8 @@ func (err KError) Error() string {
 		return "kafka server: Request exceeded the user-specified time limit in the request."
 	case BrokerNotAvailable:
 		return "kafka server: Broker not available. Not a client facing error, we should never receive this!!!"
+	case ReplicaNotAvailable:
+		return "kafka server: Replica infomation not available, one or more brokers are down."
 	case MessageSizeTooLarge:
 		return "kafka server: Message was too large, server rejected it to avoid allocation error."
 	case StaleControllerEpochCode:
