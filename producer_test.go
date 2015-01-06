@@ -2,6 +2,7 @@ package sarama
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 )
 
@@ -17,12 +18,10 @@ func TestDefaultProducerConfigValidates(t *testing.T) {
 func TestSimpleProducer(t *testing.T) {
 	broker1 := NewMockBroker(t, 1)
 	broker2 := NewMockBroker(t, 2)
-	defer broker1.Close()
-	defer broker2.Close()
 
 	response1 := new(MetadataResponse)
 	response1.AddBroker(broker2.Addr(), broker2.BrokerID())
-	response1.AddTopicPartition("my_topic", 0, 2)
+	response1.AddTopicPartition("my_topic", 0, 2, nil, nil, NoError)
 	broker1.Returns(response1)
 
 	response2 := new(ProduceResponse)
@@ -35,13 +34,11 @@ func TestSimpleProducer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer safeClose(t, client)
 
 	producer, err := NewSimpleProducer(client, "my_topic", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer safeClose(t, producer)
 
 	for i := 0; i < 10; i++ {
 		err = producer.SendMessage(nil, StringEncoder(TestMessage))
@@ -49,6 +46,55 @@ func TestSimpleProducer(t *testing.T) {
 			t.Error(err)
 		}
 	}
+
+	safeClose(t, producer)
+	safeClose(t, client)
+	broker2.Close()
+	broker1.Close()
+}
+
+func TestConcurrentSimpleProducer(t *testing.T) {
+	broker1 := NewMockBroker(t, 1)
+	broker2 := NewMockBroker(t, 2)
+
+	response1 := new(MetadataResponse)
+	response1.AddBroker(broker2.Addr(), broker2.BrokerID())
+	response1.AddTopicPartition("my_topic", 0, 2, nil, nil, NoError)
+	broker1.Returns(response1)
+
+	response2 := new(ProduceResponse)
+	response2.AddTopicPartition("my_topic", 0, NoError)
+	broker2.Returns(response2)
+	broker2.Returns(response2)
+
+	client, err := NewClient("client_id", []string{broker1.Addr()}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	producer, err := NewSimpleProducer(client, "my_topic", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wg := sync.WaitGroup{}
+
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			err := producer.SendMessage(nil, StringEncoder(TestMessage))
+			if err != nil {
+				t.Error(err)
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+
+	safeClose(t, producer)
+	safeClose(t, client)
+	broker2.Close()
+	broker1.Close()
 }
 
 func TestProducer(t *testing.T) {
@@ -59,7 +105,7 @@ func TestProducer(t *testing.T) {
 
 	response1 := new(MetadataResponse)
 	response1.AddBroker(broker2.Addr(), broker2.BrokerID())
-	response1.AddTopicPartition("my_topic", 0, broker2.BrokerID())
+	response1.AddTopicPartition("my_topic", 0, broker2.BrokerID(), nil, nil, NoError)
 	broker1.Returns(response1)
 
 	response2 := new(ProduceResponse)
@@ -88,7 +134,13 @@ func TestProducer(t *testing.T) {
 		select {
 		case msg := <-producer.Errors():
 			t.Error(msg.Err)
-		case <-producer.Successes():
+			if msg.Msg.flags != 0 {
+				t.Error("Message had flags set")
+			}
+		case msg := <-producer.Successes():
+			if msg.flags != 0 {
+				t.Error("Message had flags set")
+			}
 		}
 	}
 }
@@ -101,7 +153,7 @@ func TestProducerMultipleFlushes(t *testing.T) {
 
 	response1 := new(MetadataResponse)
 	response1.AddBroker(broker2.Addr(), broker2.BrokerID())
-	response1.AddTopicPartition("my_topic", 0, broker2.BrokerID())
+	response1.AddTopicPartition("my_topic", 0, broker2.BrokerID(), nil, nil, NoError)
 	broker1.Returns(response1)
 
 	response2 := new(ProduceResponse)
@@ -133,7 +185,13 @@ func TestProducerMultipleFlushes(t *testing.T) {
 			select {
 			case msg := <-producer.Errors():
 				t.Error(msg.Err)
-			case <-producer.Successes():
+				if msg.Msg.flags != 0 {
+					t.Error("Message had flags set")
+				}
+			case msg := <-producer.Successes():
+				if msg.flags != 0 {
+					t.Error("Message had flags set")
+				}
 			}
 		}
 	}
@@ -150,8 +208,8 @@ func TestProducerMultipleBrokers(t *testing.T) {
 	response1 := new(MetadataResponse)
 	response1.AddBroker(broker2.Addr(), broker2.BrokerID())
 	response1.AddBroker(broker3.Addr(), broker3.BrokerID())
-	response1.AddTopicPartition("my_topic", 0, broker2.BrokerID())
-	response1.AddTopicPartition("my_topic", 1, broker3.BrokerID())
+	response1.AddTopicPartition("my_topic", 0, broker2.BrokerID(), nil, nil, NoError)
+	response1.AddTopicPartition("my_topic", 1, broker3.BrokerID(), nil, nil, NoError)
 	broker1.Returns(response1)
 
 	response2 := new(ProduceResponse)
@@ -185,7 +243,13 @@ func TestProducerMultipleBrokers(t *testing.T) {
 		select {
 		case msg := <-producer.Errors():
 			t.Error(msg.Err)
-		case <-producer.Successes():
+			if msg.Msg.flags != 0 {
+				t.Error("Message had flags set")
+			}
+		case msg := <-producer.Successes():
+			if msg.flags != 0 {
+				t.Error("Message had flags set")
+			}
 		}
 	}
 }
@@ -194,19 +258,16 @@ func TestProducerFailureRetry(t *testing.T) {
 	broker1 := NewMockBroker(t, 1)
 	broker2 := NewMockBroker(t, 2)
 	broker3 := NewMockBroker(t, 3)
-	defer broker1.Close()
-	defer broker3.Close()
 
 	response1 := new(MetadataResponse)
 	response1.AddBroker(broker2.Addr(), broker2.BrokerID())
-	response1.AddTopicPartition("my_topic", 0, broker2.BrokerID())
+	response1.AddTopicPartition("my_topic", 0, broker2.BrokerID(), nil, nil, NoError)
 	broker1.Returns(response1)
 
 	client, err := NewClient("client_id", []string{broker1.Addr()}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer safeClose(t, client)
 
 	config := NewProducerConfig()
 	config.FlushMsgCount = 10
@@ -215,7 +276,7 @@ func TestProducerFailureRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer safeClose(t, producer)
+	broker1.Close()
 
 	for i := 0; i < 10; i++ {
 		producer.Input() <- &MessageToSend{Topic: "my_topic", Key: nil, Value: StringEncoder(TestMessage)}
@@ -223,12 +284,11 @@ func TestProducerFailureRetry(t *testing.T) {
 	response2 := new(ProduceResponse)
 	response2.AddTopicPartition("my_topic", 0, NotLeaderForPartition)
 	broker2.Returns(response2)
-	broker2.Close()
 
 	response3 := new(MetadataResponse)
 	response3.AddBroker(broker3.Addr(), broker3.BrokerID())
-	response3.AddTopicPartition("my_topic", 0, broker3.BrokerID())
-	broker1.Returns(response3)
+	response3.AddTopicPartition("my_topic", 0, broker3.BrokerID(), nil, nil, NoError)
+	broker2.Returns(response3)
 
 	response4 := new(ProduceResponse)
 	response4.AddTopicPartition("my_topic", 0, NoError)
@@ -237,9 +297,16 @@ func TestProducerFailureRetry(t *testing.T) {
 		select {
 		case msg := <-producer.Errors():
 			t.Error(msg.Err)
-		case <-producer.Successes():
+			if msg.Msg.flags != 0 {
+				t.Error("Message had flags set")
+			}
+		case msg := <-producer.Successes():
+			if msg.flags != 0 {
+				t.Error("Message had flags set")
+			}
 		}
 	}
+	broker2.Close()
 
 	for i := 0; i < 10; i++ {
 		producer.Input() <- &MessageToSend{Topic: "my_topic", Key: nil, Value: StringEncoder(TestMessage)}
@@ -249,9 +316,19 @@ func TestProducerFailureRetry(t *testing.T) {
 		select {
 		case msg := <-producer.Errors():
 			t.Error(msg.Err)
-		case <-producer.Successes():
+			if msg.Msg.flags != 0 {
+				t.Error("Message had flags set")
+			}
+		case msg := <-producer.Successes():
+			if msg.flags != 0 {
+				t.Error("Message had flags set")
+			}
 		}
 	}
+
+	broker3.Close()
+	safeClose(t, producer)
+	safeClose(t, client)
 }
 
 func ExampleProducer() {

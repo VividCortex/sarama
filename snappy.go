@@ -1,10 +1,10 @@
 package sarama
 
 import (
+	"github.com/VividCortex/snappy-go/snappy"
+
 	"bytes"
 	"encoding/binary"
-
-	"github.com/VividCortex/snappy-go/snappy"
 )
 
 var snappyMagic = []byte{130, 83, 78, 65, 80, 80, 89, 0}
