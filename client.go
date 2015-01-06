@@ -517,7 +517,9 @@ func (client *Client) update(data *MetadataResponse) ([]string, error) {
 			Logger.Printf("Registered new broker #%d at %s", broker.ID(), broker.Addr())
 		} else if broker.Addr() != client.brokers[broker.ID()].Addr() {
 			safeAsyncClose(client.brokers[broker.ID()])
+
 			_ = broker.Open(client.config.DefaultBrokerConf)
+
 			client.brokers[broker.ID()] = broker
 			Logger.Printf("Replaced registered broker #%d with %s", broker.ID(), broker.Addr())
 		}

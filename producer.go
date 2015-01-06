@@ -445,6 +445,7 @@ func (p *Producer) messageAggregator(broker *Broker, input chan *MessageToSend) 
 				(p.config.Compression != CompressionNone && bytesAccumulated+msg.byteSize() >= p.config.MaxMessageBytes) ||
 				(p.config.MaxMessagesPerReq > 0 && len(buffer) >= p.config.MaxMessagesPerReq) {
 				Logger.Println("producer/aggregator maximum request accumulated, forcing blocking flush")
+
 				flusher <- buffer
 				buffer = nil
 				doFlush = nil
