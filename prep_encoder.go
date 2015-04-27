@@ -1,7 +1,7 @@
 package sarama
 
 import (
-	"encoding/binary"
+	"fmt"
 	"math"
 )
 
@@ -12,24 +12,24 @@ type prepEncoder struct {
 // primitives
 
 func (pe *prepEncoder) putInt8(in int8) {
-	pe.length += binary.Size(in)
+	pe.length += 1
 }
 
 func (pe *prepEncoder) putInt16(in int16) {
-	pe.length += binary.Size(in)
+	pe.length += 2
 }
 
 func (pe *prepEncoder) putInt32(in int32) {
-	pe.length += binary.Size(in)
+	pe.length += 4
 }
 
 func (pe *prepEncoder) putInt64(in int64) {
-	pe.length += binary.Size(in)
+	pe.length += 8
 }
 
 func (pe *prepEncoder) putArrayLength(in int) error {
 	if in > math.MaxInt32 {
-		return EncodingError
+		return PacketEncodingError{fmt.Sprintf("Array too long: %d", in)}
 	}
 	pe.length += 4
 	return nil
@@ -43,7 +43,7 @@ func (pe *prepEncoder) putBytes(in []byte) error {
 		return nil
 	}
 	if len(in) > math.MaxInt32 {
-		return EncodingError
+		return PacketEncodingError{fmt.Sprintf("Byteslice too long: %d", len(in))}
 	}
 	pe.length += len(in)
 	return nil
@@ -51,7 +51,7 @@ func (pe *prepEncoder) putBytes(in []byte) error {
 
 func (pe *prepEncoder) putRawBytes(in []byte) error {
 	if len(in) > math.MaxInt32 {
-		return EncodingError
+		return PacketEncodingError{fmt.Sprintf("Byteslice too long: %d", len(in))}
 	}
 	pe.length += len(in)
 	return nil
@@ -60,7 +60,7 @@ func (pe *prepEncoder) putRawBytes(in []byte) error {
 func (pe *prepEncoder) putString(in string) error {
 	pe.length += 2
 	if len(in) > math.MaxInt16 {
-		return EncodingError
+		return PacketEncodingError{fmt.Sprintf("String too long: %d", len(in))}
 	}
 	pe.length += len(in)
 	return nil
