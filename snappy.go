@@ -5,8 +5,6 @@ import (
 
 	"bytes"
 	"encoding/binary"
-
-	"code.google.com/p/snappy-go/snappy"
 )
 
 var snappyMagic = []byte{130, 83, 78, 65, 80, 80, 89, 0}
