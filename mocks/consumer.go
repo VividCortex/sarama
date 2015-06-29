@@ -145,7 +145,7 @@ func (c *Consumer) ExpectConsumePartition(topic string, partition int32, offset 
 			partition:    partition,
 			offset:       offset,
 			expectations: make(chan *consumerExpectation, 1000),
-			messages:     make(chan *sarama.ConsumerMessage, c.config.ChannelBufferSize),
+			messages:     make(chan *TimedMessage, c.config.ChannelBufferSize),
 			errors:       make(chan *sarama.ConsumerError, c.config.ChannelBufferSize),
 		}
 	}
@@ -270,7 +270,7 @@ func (pc *PartitionConsumer) Errors() <-chan *sarama.ConsumerError {
 }
 
 // Messages implements the Messages method from the sarama.PartitionConsumer interface.
-func (pc *PartitionConsumer) Messages() <-chan *sarama.ConsumerMessage {
+func (pc *PartitionConsumer) Messages() <-chan *TimedMessage {
 	return pc.messages
 }
 
