@@ -26,7 +26,7 @@ func TestConsumerOffsetManual(t *testing.T) {
 	offsetResponseOldest.AddTopicPartition("my_topic", 0, 0)
 	leader.Returns(offsetResponseOldest)
 
-	for i := 0; i <= 10; i++ {
+	for i := 0; i < 10; i++ {
 		fetchResponse := new(FetchResponse)
 		fetchResponse.AddMessage("my_topic", 0, nil, ByteEncoder([]byte{0x00, 0x0E}), int64(i+1234))
 		leader.Returns(fetchResponse)
@@ -59,7 +59,7 @@ func TestConsumerOffsetManual(t *testing.T) {
 	leader.Close()
 }
 
-func TestConsumerLatestOffset(t *testing.T) {
+func TestConsumerOffsetNewest(t *testing.T) {
 	seedBroker := newMockBroker(t, 1)
 	leader := newMockBroker(t, 2)
 
@@ -69,15 +69,17 @@ func TestConsumerLatestOffset(t *testing.T) {
 	seedBroker.Returns(metadataResponse)
 
 	offsetResponseNewest := new(OffsetResponse)
-	offsetResponseNewest.AddTopicPartition("my_topic", 0, 0x010102)
+	offsetResponseNewest.AddTopicPartition("my_topic", 0, 10)
 	leader.Returns(offsetResponseNewest)
 
 	offsetResponseOldest := new(OffsetResponse)
-	offsetResponseOldest.AddTopicPartition("my_topic", 0, 0x010101)
+	offsetResponseOldest.AddTopicPartition("my_topic", 0, 7)
 	leader.Returns(offsetResponseOldest)
 
 	fetchResponse := new(FetchResponse)
-	fetchResponse.AddMessage("my_topic", 0, nil, ByteEncoder([]byte{0x00, 0x0E}), 0x010101)
+	fetchResponse.AddMessage("my_topic", 0, nil, ByteEncoder([]byte{0x00, 0x0E}), 10)
+	block := fetchResponse.GetBlock("my_topic", 0)
+	block.HighWaterMarkOffset = 14
 	leader.Returns(fetchResponse)
 
 	master, err := NewConsumer([]string{seedBroker.Addr()}, nil)
@@ -91,12 +93,24 @@ func TestConsumerLatestOffset(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	msg := <-consumer.Messages()
+
+	// we deliver one message, so it should be one higher than we return in the OffsetResponse
+	if msg.Offset != 10 {
+		t.Error("Latest message offset not fetched correctly:", msg.Offset)
+	}
+
+	if hwmo := consumer.HighWaterMarkOffset(); hwmo != 14 {
+		t.Errorf("Expected high water mark offset 14, found %d", hwmo)
+	}
+
 	leader.Close()
 	safeClose(t, consumer)
 	safeClose(t, master)
 
-	// we deliver one message, so it should be one higher than we return in the OffsetResponse
-	if consumer.(*partitionConsumer).offset != 0x010102 {
+	// We deliver one message, so it should be one higher than we return in the OffsetResponse.
+	// This way it is set correctly for the next FetchRequest.
+	if consumer.(*partitionConsumer).offset != 11 {
 		t.Error("Latest offset not fetched correctly:", consumer.(*partitionConsumer).offset)
 	}
 }
@@ -312,27 +326,16 @@ func TestConsumerRebalancingMultiplePartitions(t *testing.T) {
 	fetchResponse.AddMessage("my_topic", 1, nil, ByteEncoder([]byte{0x00, 0x0E}), int64(8))
 	fetchResponse.AddMessage("my_topic", 1, nil, ByteEncoder([]byte{0x00, 0x0E}), int64(9))
 	leader0.Returns(fetchResponse)
+	time.Sleep(50 * time.Millisecond) // dumbest way to force a particular response ordering
 
-	// leader0 provides last message  on partition 1
-	fetchResponse = new(FetchResponse)
-	fetchResponse.AddMessage("my_topic", 1, nil, ByteEncoder([]byte{0x00, 0x0E}), int64(10))
-	leader0.Returns(fetchResponse)
-
-	// leader1 provides last message  on partition 0
-	fetchResponse = new(FetchResponse)
-	fetchResponse.AddMessage("my_topic", 0, nil, ByteEncoder([]byte{0x00, 0x0E}), int64(10))
-	leader1.Returns(fetchResponse)
-
-	wg.Wait()
 	leader1.Close()
 	leader0.Close()
+	wg.Wait()
 	seedBroker.Close()
 	safeClose(t, master)
 }
 
 func TestConsumerInterleavedClose(t *testing.T) {
-	t.Skip("Enable once bug #325 is fixed.")
-
 	seedBroker := newMockBroker(t, 1)
 	leader := newMockBroker(t, 2)
 
@@ -365,6 +368,7 @@ func TestConsumerInterleavedClose(t *testing.T) {
 	fetchResponse := new(FetchResponse)
 	fetchResponse.AddMessage("my_topic", 0, nil, ByteEncoder([]byte{0x00, 0x0E}), int64(0))
 	leader.Returns(fetchResponse)
+	time.Sleep(50 * time.Millisecond)
 
 	offsetResponseNewest1 := new(OffsetResponse)
 	offsetResponseNewest1.AddTopicPartition("my_topic", 1, 1234)
@@ -378,7 +382,9 @@ func TestConsumerInterleavedClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	<-c0.Messages()
 
+	fetchResponse.AddMessage("my_topic", 0, nil, ByteEncoder([]byte{0x00, 0x0E}), int64(1))
 	fetchResponse.AddMessage("my_topic", 1, nil, ByteEncoder([]byte{0x00, 0x0E}), int64(0))
 	leader.Returns(fetchResponse)
 

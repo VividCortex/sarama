@@ -1,5 +1,41 @@
 # Changelog
 
+#### Unreleased
+
+Improvements:
+ - Optimizations when decoding snappy messages, thanks to John Potocny
+   ([#446](https://github.com/Shopify/sarama/pull/446)).
+
+#### Version 1.4.0 (2015-05-01)
+
+New Features:
+ - The consumer now implements `Topics()` and `Partitions()` methods to enable
+   users to dynamically choose what topics/partitions to consume without
+   instantiating a full client
+   ([#431](https://github.com/Shopify/sarama/pull/431)).
+ - The partition-consumer now exposes the high water mark offset value returned
+   by the broker via the `HighWaterMarkOffset()` method ([#339](https://github.com/Shopify/sarama/pull/339)).
+ - Added a `kafka-console-consumer` tool capable of handling multiple
+   partitions, and deprecated the now-obsolete `kafka-console-partitionConsumer`
+   ([#439](https://github.com/Shopify/sarama/pull/439),
+   [#442](https://github.com/Shopify/sarama/pull/442)).
+
+Improvements:
+ - The producer's logging during retry scenarios is more consistent, more
+   useful, and slightly less verbose
+   ([#429](https://github.com/Shopify/sarama/pull/429)).
+ - The client now shuffles its initial list of seed brokers in order to prevent
+   thundering herd on the first broker in the list
+   ([#441](https://github.com/Shopify/sarama/pull/441)).
+
+Bug Fixes:
+ - The producer now correctly manages its state if retries occur when it is
+   shutting down, fixing several instances of confusing behaviour and at least
+   one potential deadlock ([#419](https://github.com/Shopify/sarama/pull/419)).
+ - The consumer now handles messages for different partitions asynchronously,
+   making it much more resilient to specific user code ordering
+   ([#325](https://github.com/Shopify/sarama/pull/325)).
+
 #### Version 1.3.0 (2015-04-16)
 
 New Features:
