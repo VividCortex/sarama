@@ -1,10 +1,125 @@
 # Changelog
 
-#### Unreleased
+#### Version 1.8.0 (trunk)
+
+New Features:
+ - Add a missing protocol constant, `GroupGenerationUndefined`
+   ([#586](https://github.com/Shopify/sarama/pull/586)).
+
+Improvements:
+ - Optimize for fewer system calls when reading from the network
+   ([#584](https://github.com/Shopify/sarama/pull/584)).
+
+Bug Fixes:
+ - Fix the OffsetManager to be compatible with Kafka 0.9
+   ([#585](https://github.com/Shopify/sarama/pull/585)).
+
+#### Version 1.7.0 (2015-12-11)
+
+New Features:
+ - Preliminary support for Kafka 0.9
+   ([#572](https://github.com/Shopify/sarama/pull/572)). This comes with several
+   caveats:
+   - Protocol-layer support is mostly in place
+     ([#577](https://github.com/Shopify/sarama/pull/577)), however Kafka 0.9
+     renamed some messages and fields, which we did not in order to preserve API
+     compatibility.
+   - The producer and consumer work against 0.9, but the offset manager does
+     not ([#573](https://github.com/Shopify/sarama/pull/573)).
+   - TLS support may or may not work
+     ([#581](https://github.com/Shopify/sarama/pull/581)).
+
+Improvements:
+ - Don't wait for request timeouts on dead brokers, greatly speeding recovery
+   when the TCP connection is left hanging
+   ([#548](https://github.com/Shopify/sarama/pull/548)).
+ - Refactored part of the producer. The new version provides a much more elegant
+   solution to [#449](https://github.com/Shopify/sarama/pull/449). It is also
+   slightly more efficient, and much more precise in calculating batch sizes
+   when compression is used
+   ([#549](https://github.com/Shopify/sarama/pull/549),
+   [#550](https://github.com/Shopify/sarama/pull/550),
+   [#551](https://github.com/Shopify/sarama/pull/551)).
+
+Bug Fixes:
+ - Fix race condition in consumer test mock
+   ([#553](https://github.com/Shopify/sarama/pull/553)).
+
+#### Version 1.6.1 (2015-09-25)
+
+Bug Fixes:
+ - Fix panic that could occur if a user-supplied message value failed to encode
+   ([#449](https://github.com/Shopify/sarama/pull/449)).
+
+#### Version 1.6.0 (2015-09-04)
+
+New Features:
+ - Implementation of a consumer offset manager using the APIs introduced in
+   Kafka 0.8.2. The API is designed mainly for integration into a future
+   high-level consumer, not for direct use, although it is *possible* to use it
+   directly.
+   ([#461](https://github.com/Shopify/sarama/pull/461)).
+
+Improvements:
+ - CRC32 calculation is much faster on machines with SSE4.2 instructions,
+   removing a major hotspot from most profiles
+   ([#255](https://github.com/Shopify/sarama/pull/255)).
+
+Bug Fixes:
+ - Make protocol decoding more robust against some malformed packets generated
+   by go-fuzz ([#523](https://github.com/Shopify/sarama/pull/523),
+   [#525](https://github.com/Shopify/sarama/pull/525)) or found in other ways
+   ([#528](https://github.com/Shopify/sarama/pull/528)).
+ - Fix a potential race condition panic in the consumer on shutdown
+   ([#529](https://github.com/Shopify/sarama/pull/529)).
+
+#### Version 1.5.0 (2015-08-17)
+
+New Features:
+ - TLS-encrypted network connections are now supported. This feature is subject
+   to change when Kafka releases built-in TLS support, but for now this is
+   enough to work with TLS-terminating proxies
+   ([#154](https://github.com/Shopify/sarama/pull/154)).
+
+Improvements:
+ - The consumer will not block if a single partition is not drained by the user;
+   all other partitions will continue to consume normally
+   ([#485](https://github.com/Shopify/sarama/pull/485)).
+ - Formatting of error strings has been much improved
+   ([#495](https://github.com/Shopify/sarama/pull/495)).
+ - Internal refactoring of the producer for code cleanliness and to enable
+   future work ([#300](https://github.com/Shopify/sarama/pull/300)).
+
+Bug Fixes:
+ - Fix a potential deadlock in the consumer on shutdown
+   ([#475](https://github.com/Shopify/sarama/pull/475)).
+
+#### Version 1.4.3 (2015-07-21)
+
+Bug Fixes:
+ - Don't include the partitioner in the producer's "fetch partitions"
+   circuit-breaker ([#466](https://github.com/Shopify/sarama/pull/466)).
+ - Don't retry messages until the broker is closed when abandoning a broker in
+   the producer ([#468](https://github.com/Shopify/sarama/pull/468)).
+ - Update the import path for snappy-go, it has moved again and the API has
+   changed slightly ([#486](https://github.com/Shopify/sarama/pull/486)).
+
+#### Version 1.4.2 (2015-05-27)
+
+Bug Fixes:
+ - Update the import path for snappy-go, it has moved from google code to github
+   ([#456](https://github.com/Shopify/sarama/pull/456)).
+
+#### Version 1.4.1 (2015-05-25)
 
 Improvements:
  - Optimizations when decoding snappy messages, thanks to John Potocny
    ([#446](https://github.com/Shopify/sarama/pull/446)).
+
+Bug Fixes:
+ - Fix hypothetical race conditions on producer shutdown
+   ([#450](https://github.com/Shopify/sarama/pull/450),
+   [#451](https://github.com/Shopify/sarama/pull/451)).
 
 #### Version 1.4.0 (2015-05-01)
 

@@ -1,6 +1,7 @@
 package sarama
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -73,13 +74,18 @@ func (b *Broker) Open(conf *Config) error {
 			KeepAlive: conf.Net.KeepAlive,
 		}
 
-		b.conn, b.connErr = dialer.Dial("tcp", b.addr)
+		if conf.Net.TLS.Enable {
+			b.conn, b.connErr = tls.DialWithDialer(&dialer, "tcp", b.addr, conf.Net.TLS.Config)
+		} else {
+			b.conn, b.connErr = dialer.Dial("tcp", b.addr)
+		}
 		if b.connErr != nil {
 			b.conn = nil
 			atomic.StoreInt32(&b.opened, 0)
 			Logger.Printf("Failed to connect to broker %s: %s\n", b.addr, b.connErr)
 			return
 		}
+		b.conn = newBufConn(b.conn)
 
 		b.conf = conf
 		b.done = make(chan bool)
@@ -234,7 +240,7 @@ func (b *Broker) FetchOffset(request *OffsetFetchRequest) (*OffsetFetchResponse,
 	return response, nil
 }
 
-func (b *Broker) send(req requestEncoder, promiseResponse bool) (*responsePromise, error) {
+func (b *Broker) send(rb requestBody, promiseResponse bool) (*responsePromise, error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -245,8 +251,8 @@ func (b *Broker) send(req requestEncoder, promiseResponse bool) (*responsePromis
 		return nil, ErrNotConnected
 	}
 
-	fullRequest := request{b.correlationID, b.conf.ClientID, req}
-	buf, err := encode(&fullRequest)
+	req := &request{correlationID: b.correlationID, clientID: b.conf.ClientID, body: rb}
+	buf, err := encode(req)
 	if err != nil {
 		return nil, err
 	}
@@ -266,13 +272,13 @@ func (b *Broker) send(req requestEncoder, promiseResponse bool) (*responsePromis
 		return nil, nil
 	}
 
-	promise := responsePromise{fullRequest.correlationID, make(chan []byte), make(chan error)}
+	promise := responsePromise{req.correlationID, make(chan []byte), make(chan error)}
 	b.responses <- promise
 
 	return &promise, nil
 }
 
-func (b *Broker) sendAndReceive(req requestEncoder, res decoder) error {
+func (b *Broker) sendAndReceive(req requestBody, res decoder) error {
 	promise, err := b.send(req, res != nil)
 
 	if err != nil {
@@ -307,7 +313,10 @@ func (b *Broker) decode(pd packetDecoder) (err error) {
 		return err
 	}
 
-	b.addr = fmt.Sprint(host, ":", port)
+	b.addr = net.JoinHostPort(host, fmt.Sprint(port))
+	if _, _, err := net.SplitHostPort(b.addr); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -336,16 +345,24 @@ func (b *Broker) encode(pe packetEncoder) (err error) {
 }
 
 func (b *Broker) responseReceiver() {
+	var dead error
 	header := make([]byte, 8)
 	for response := range b.responses {
+		if dead != nil {
+			response.errors <- dead
+			continue
+		}
+
 		err := b.conn.SetReadDeadline(time.Now().Add(b.conf.Net.ReadTimeout))
 		if err != nil {
+			dead = err
 			response.errors <- err
 			continue
 		}
 
 		_, err = io.ReadFull(b.conn, header)
 		if err != nil {
+			dead = err
 			response.errors <- err
 			continue
 		}
@@ -353,23 +370,22 @@ func (b *Broker) responseReceiver() {
 		decodedHeader := responseHeader{}
 		err = decode(header, &decodedHeader)
 		if err != nil {
+			dead = err
 			response.errors <- err
 			continue
 		}
 		if decodedHeader.correlationID != response.correlationID {
 			// TODO if decoded ID < cur ID, discard until we catch up
 			// TODO if decoded ID > cur ID, save it so when cur ID catches up we have a response
-			response.errors <- PacketDecodingError{fmt.Sprintf("CorrelationID didn't match, wanted %d, got %d", response.correlationID, decodedHeader.correlationID)}
+			dead = PacketDecodingError{fmt.Sprintf("correlation ID didn't match, wanted %d, got %d", response.correlationID, decodedHeader.correlationID)}
+			response.errors <- dead
 			continue
 		}
 
 		buf := make([]byte, decodedHeader.length-4)
 		_, err = io.ReadFull(b.conn, buf)
 		if err != nil {
-			// XXX: the above ReadFull call inherits the same ReadDeadline set at the top of this loop, so it may
-			// fail with a timeout error. If this happens, our connection is permanently toast since we will no longer
-			// be aligned correctly on the stream (we'll be reading garbage Kafka headers from the middle of data).
-			// Can we/should we fail harder in that case?
+			dead = err
 			response.errors <- err
 			continue
 		}
