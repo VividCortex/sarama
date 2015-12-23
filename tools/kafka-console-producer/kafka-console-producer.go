@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Shopify/sarama"
+	"github.com/VividCortex/sarama"
 )
 
 var (

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/Shopify/sarama"
+	"github.com/VividCortex/sarama"
 )
 
 type testReporterMock struct {

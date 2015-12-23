@@ -3,7 +3,7 @@ package sarama
 import (
 	"encoding/binary"
 
-	"github.com/klauspost/crc32"
+	"github.com/VividCortex/sarama/crc32"
 )
 
 // crc32Field implements the pushEncoder and pushDecoder interfaces for calculating CRC32s.
