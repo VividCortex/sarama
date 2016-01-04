@@ -10,7 +10,7 @@ import (
 var snappyMagic = []byte{130, 83, 78, 65, 80, 80, 89, 0}
 
 // SnappyEncode encodes binary data
-func snappyEncode(src []byte) ([]byte, error) {
+func snappyEncode(src []byte) []byte {
 	return snappy.Encode(nil, src)
 }
 

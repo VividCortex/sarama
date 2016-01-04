@@ -12,7 +12,7 @@ type prepEncoder struct {
 // primitives
 
 func (pe *prepEncoder) putInt8(in int8) {
-	pe.length += 1
+	pe.length++
 }
 
 func (pe *prepEncoder) putInt16(in int16) {
@@ -29,7 +29,7 @@ func (pe *prepEncoder) putInt64(in int64) {
 
 func (pe *prepEncoder) putArrayLength(in int) error {
 	if in > math.MaxInt32 {
-		return PacketEncodingError{fmt.Sprintf("Array too long: %d", in)}
+		return PacketEncodingError{fmt.Sprintf("array too long (%d)", in)}
 	}
 	pe.length += 4
 	return nil
@@ -43,7 +43,7 @@ func (pe *prepEncoder) putBytes(in []byte) error {
 		return nil
 	}
 	if len(in) > math.MaxInt32 {
-		return PacketEncodingError{fmt.Sprintf("Byteslice too long: %d", len(in))}
+		return PacketEncodingError{fmt.Sprintf("byteslice too long (%d)", len(in))}
 	}
 	pe.length += len(in)
 	return nil
@@ -51,7 +51,7 @@ func (pe *prepEncoder) putBytes(in []byte) error {
 
 func (pe *prepEncoder) putRawBytes(in []byte) error {
 	if len(in) > math.MaxInt32 {
-		return PacketEncodingError{fmt.Sprintf("Byteslice too long: %d", len(in))}
+		return PacketEncodingError{fmt.Sprintf("byteslice too long (%d)", len(in))}
 	}
 	pe.length += len(in)
 	return nil
@@ -60,9 +60,24 @@ func (pe *prepEncoder) putRawBytes(in []byte) error {
 func (pe *prepEncoder) putString(in string) error {
 	pe.length += 2
 	if len(in) > math.MaxInt16 {
-		return PacketEncodingError{fmt.Sprintf("String too long: %d", len(in))}
+		return PacketEncodingError{fmt.Sprintf("string too long (%d)", len(in))}
 	}
 	pe.length += len(in)
+	return nil
+}
+
+func (pe *prepEncoder) putStringArray(in []string) error {
+	err := pe.putArrayLength(len(in))
+	if err != nil {
+		return err
+	}
+
+	for _, str := range in {
+		if err := pe.putString(str); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
