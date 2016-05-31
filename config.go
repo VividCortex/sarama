@@ -52,6 +52,11 @@ type Config struct {
 		// Defaults to 10 minutes. Set to 0 to disable. Similar to
 		// `topic.metadata.refresh.interval.ms` in the JVM version.
 		RefreshFrequency time.Duration
+
+		// If enabled, cluster metadata refreshes will be scheduled randomly
+		// within the window specified by RefreshFrequency, to avoid concurrent
+		// updates by multiple clients started together.
+		RandomRefresh bool
 	}
 
 	// Producer is the namespace for configuration related to producing messages,
