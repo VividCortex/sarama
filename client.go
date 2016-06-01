@@ -555,14 +555,17 @@ func (client *client) backgroundMetadataUpdater() {
 	ticker := time.NewTicker(client.conf.Metadata.RefreshFrequency)
 	defer ticker.Stop()
 	random := rand.New(rand.NewSource(int64(time.Now().Nanosecond())))
-	sleepThreshold := int64(client.conf.Metadata.RefreshFrequency) / 2
+	if client.conf.Metadata.RandomRefreshBuffer > 0 {
+		sleepThreshold := int64(client.conf.Metadata.RefreshFrequency - client.conf.Metadata.RandomRefreshBuffer)
+	}
 
 	for {
 		select {
 		case <-ticker.C:
-			if client.conf.Metadata.RandomRefresh {
+			if client.conf.Metadata.RandomRefreshBuffer > 0 {
 				// Add a random sleep before refreshing metaData in the client.
-				// This will be bounded, up to client.conf.Metadata.RefreshFrequency/2.
+				// This will be bounded, up to
+				// client.conf.Metadata.RefreshFrequency - client.conf.Metadata.RandomRefreshBuffer.
 				time.Sleep(time.Duration(random.Int63n(sleepThreshold)))
 			}
 

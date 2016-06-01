@@ -53,10 +53,10 @@ type Config struct {
 		// `topic.metadata.refresh.interval.ms` in the JVM version.
 		RefreshFrequency time.Duration
 
-		// If enabled, cluster metadata refreshes will be scheduled randomly
-		// within the window specified by RefreshFrequency, to avoid concurrent
-		// updates by multiple clients started together.
-		RandomRefresh bool
+		// If set, Cluster metadata refreshes will be scheduled randomly
+		// within the window specified by (RefreshFrequency - RandomRefreshBuffer),
+		// to avoid concurrent updates by multiple clients started together.
+		RandomRefreshBuffer time.Duration
 	}
 
 	// Producer is the namespace for configuration related to producing messages,
@@ -290,6 +290,8 @@ func (c *Config) Validate() error {
 		return ConfigurationError("Metadata.Retry.Backoff must be >= 0")
 	case c.Metadata.RefreshFrequency < 0:
 		return ConfigurationError("Metadata.RefreshFrequency must be >= 0")
+	case c.Metadata.RandomRefreshBuffer > c.Metadata.RefreshFrequency:
+		return ConfigurationError("Metadata.RandomRefreshBuffer must be < Metadata.RefreshFrequency")
 	}
 
 	// validate the Producer values
