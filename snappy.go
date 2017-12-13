@@ -1,7 +1,7 @@
 package sarama
 
 import (
-	"github.com/VividCortex/snappy"
+	"github.com/golang/snappy"
 
 	"bytes"
 	"encoding/binary"
