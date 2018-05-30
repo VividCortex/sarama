@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"strconv"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -21,45 +20,66 @@ const (
 
 type requestHandlerFunc func(req *request) (res encoder)
 
-// mockBroker is a mock Kafka broker. It consists of a TCP server on a
-// kernel-selected localhost port that can accept many connections. It reads
-// Kafka requests from that connection and passes them to the user specified
-// handler function (see SetHandler) that generates respective responses. If
-// the handler has not been explicitly specified then the broker returns
-// responses set by the Returns function in the exact order they were provided.
-// (if a response has a len of 0, nothing is sent, and the client request will
-// timeout in this case).
+// RequestNotifierFunc is invoked when a mock broker processes a request successfully
+// and will provides the number of bytes read and written.
+type RequestNotifierFunc func(bytesRead, bytesWritten int)
+
+// MockBroker is a mock Kafka broker that is used in unit tests. It is exposed
+// to facilitate testing of higher level or specialized consumers and producers
+// built on top of Sarama. Note that it does not 'mimic' the Kafka API protocol,
+// but rather provides a facility to do that. It takes care of the TCP
+// transport, request unmarshaling, response marshaling, and makes it the test
+// writer responsibility to program correct according to the Kafka API protocol
+// MockBroker behaviour.
 //
-// When running tests with one of these, it is strongly recommended to specify
+// MockBroker is implemented as a TCP server listening on a kernel-selected
+// localhost port that can accept many connections. It reads Kafka requests
+// from that connection and returns responses programmed by the SetHandlerByMap
+// function. If a MockBroker receives a request that it has no programmed
+// response for, then it returns nothing and the request times out.
+//
+// A set of MockRequest builders to define mappings used by MockBroker is
+// provided by Sarama. But users can develop MockRequests of their own and use
+// them along with or instead of the standard ones.
+//
+// When running tests with MockBroker it is strongly recommended to specify
 // a timeout to `go test` so that if the broker hangs waiting for a response,
 // the test panics.
 //
 // It is not necessary to prefix message length or correlation ID to your
 // response bytes, the server does that automatically as a convenience.
-type mockBroker struct {
+type MockBroker struct {
 	brokerID     int32
 	port         int32
 	closing      chan none
 	stopper      chan none
 	expectations chan encoder
 	listener     net.Listener
-	t            *testing.T
+	t            TestReporter
 	latency      time.Duration
 	handler      requestHandlerFunc
+	notifier     RequestNotifierFunc
 	history      []RequestResponse
 	lock         sync.Mutex
 }
 
+// RequestResponse represents a Request/Response pair processed by MockBroker.
 type RequestResponse struct {
-	Request  requestBody
+	Request  protocolBody
 	Response encoder
 }
 
-func (b *mockBroker) SetLatency(latency time.Duration) {
+// SetLatency makes broker pause for the specified period every time before
+// replying.
+func (b *MockBroker) SetLatency(latency time.Duration) {
 	b.latency = latency
 }
 
-func (b *mockBroker) SetHandlerByMap(handlerMap map[string]MockResponse) {
+// SetHandlerByMap defines mapping of Request types to MockResponses. When a
+// request is received by the broker, it looks up the request type in the map
+// and uses the found MockResponse instance to generate an appropriate reply.
+// If the request type is not found in the map then nothing is sent.
+func (b *MockBroker) SetHandlerByMap(handlerMap map[string]MockResponse) {
 	b.setHandler(func(req *request) (res encoder) {
 		reqTypeName := reflect.TypeOf(req.body).Elem().Name()
 		mockResponse := handlerMap[reqTypeName]
@@ -70,11 +90,24 @@ func (b *mockBroker) SetHandlerByMap(handlerMap map[string]MockResponse) {
 	})
 }
 
-func (b *mockBroker) BrokerID() int32 {
+// SetNotifier set a function that will get invoked whenever a request has been
+// processed successfully and will provide the number of bytes read and written
+func (b *MockBroker) SetNotifier(notifier RequestNotifierFunc) {
+	b.lock.Lock()
+	b.notifier = notifier
+	b.lock.Unlock()
+}
+
+// BrokerID returns broker ID assigned to the broker.
+func (b *MockBroker) BrokerID() int32 {
 	return b.brokerID
 }
 
-func (b *mockBroker) History() []RequestResponse {
+// History returns a slice of RequestResponse pairs in the order they were
+// processed by the broker. Note that in case of multiple connections to the
+// broker the order expected by a test can be different from the order recorded
+// in the history, unless some synchronization is implemented in the test.
+func (b *MockBroker) History() []RequestResponse {
 	b.lock.Lock()
 	history := make([]RequestResponse, len(b.history))
 	copy(history, b.history)
@@ -82,15 +115,19 @@ func (b *mockBroker) History() []RequestResponse {
 	return history
 }
 
-func (b *mockBroker) Port() int32 {
+// Port returns the TCP port number the broker is listening for requests on.
+func (b *MockBroker) Port() int32 {
 	return b.port
 }
 
-func (b *mockBroker) Addr() string {
+// Addr returns the broker connection string in the form "<address>:<port>".
+func (b *MockBroker) Addr() string {
 	return b.listener.Addr().String()
 }
 
-func (b *mockBroker) Close() {
+// Close terminates the broker blocking until it stops internal goroutines and
+// releases all resources.
+func (b *MockBroker) Close() {
 	close(b.expectations)
 	if len(b.expectations) > 0 {
 		buf := bytes.NewBufferString(fmt.Sprintf("mockbroker/%d: not all expectations were satisfied! Still waiting on:\n", b.BrokerID()))
@@ -106,20 +143,23 @@ func (b *mockBroker) Close() {
 // setHandler sets the specified function as the request handler. Whenever
 // a mock broker reads a request from the wire it passes the request to the
 // function and sends back whatever the handler function returns.
-func (b *mockBroker) setHandler(handler requestHandlerFunc) {
+func (b *MockBroker) setHandler(handler requestHandlerFunc) {
 	b.lock.Lock()
 	b.handler = handler
 	b.lock.Unlock()
 }
 
-func (b *mockBroker) serverLoop() {
+func (b *MockBroker) serverLoop() {
 	defer close(b.stopper)
 	var err error
 	var conn net.Conn
 
 	go func() {
 		<-b.closing
-		safeClose(b.t, b.listener)
+		err := b.listener.Close()
+		if err != nil {
+			b.t.Error(err)
+		}
 	}()
 
 	wg := &sync.WaitGroup{}
@@ -133,7 +173,7 @@ func (b *mockBroker) serverLoop() {
 	Logger.Printf("*** mockbroker/%d: listener closed, err=%v", b.BrokerID(), err)
 }
 
-func (b *mockBroker) handleRequests(conn net.Conn, idx int, wg *sync.WaitGroup) {
+func (b *MockBroker) handleRequests(conn net.Conn, idx int, wg *sync.WaitGroup) {
 	defer wg.Done()
 	defer func() {
 		_ = conn.Close()
@@ -153,7 +193,7 @@ func (b *mockBroker) handleRequests(conn net.Conn, idx int, wg *sync.WaitGroup) 
 
 	resHeader := make([]byte, 8)
 	for {
-		req, err := decodeRequest(conn)
+		req, bytesRead, err := decodeRequest(conn)
 		if err != nil {
 			Logger.Printf("*** mockbroker/%d/%d: invalid request: err=%+v, %+v", b.brokerID, idx, err, spew.Sdump(req))
 			b.serverError(err)
@@ -175,12 +215,17 @@ func (b *mockBroker) handleRequests(conn net.Conn, idx int, wg *sync.WaitGroup) 
 		}
 		Logger.Printf("*** mockbroker/%d/%d: served %v -> %v", b.brokerID, idx, req, res)
 
-		encodedRes, err := encode(res)
+		encodedRes, err := encode(res, nil)
 		if err != nil {
 			b.serverError(err)
 			break
 		}
 		if len(encodedRes) == 0 {
+			b.lock.Lock()
+			if b.notifier != nil {
+				b.notifier(bytesRead, 0)
+			}
+			b.lock.Unlock()
 			continue
 		}
 
@@ -194,11 +239,17 @@ func (b *mockBroker) handleRequests(conn net.Conn, idx int, wg *sync.WaitGroup) 
 			b.serverError(err)
 			break
 		}
+
+		b.lock.Lock()
+		if b.notifier != nil {
+			b.notifier(bytesRead, len(resHeader)+len(encodedRes))
+		}
+		b.lock.Unlock()
 	}
 	Logger.Printf("*** mockbroker/%d/%d: connection closed, err=%v", b.BrokerID(), idx, err)
 }
 
-func (b *mockBroker) defaultRequestHandler(req *request) (res encoder) {
+func (b *MockBroker) defaultRequestHandler(req *request) (res encoder) {
 	select {
 	case res, ok := <-b.expectations:
 		if !ok {
@@ -210,7 +261,7 @@ func (b *mockBroker) defaultRequestHandler(req *request) (res encoder) {
 	}
 }
 
-func (b *mockBroker) serverError(err error) {
+func (b *MockBroker) serverError(err error) {
 	isConnectionClosedError := false
 	if _, ok := err.(*net.OpError); ok {
 		isConnectionClosedError = true
@@ -227,31 +278,37 @@ func (b *mockBroker) serverError(err error) {
 	b.t.Errorf(err.Error())
 }
 
-// newMockBroker launches a fake Kafka broker. It takes a *testing.T as provided by the
+// NewMockBroker launches a fake Kafka broker. It takes a TestReporter as provided by the
 // test framework and a channel of responses to use.  If an error occurs it is
-// simply logged to the *testing.T and the broker exits.
-func newMockBroker(t *testing.T, brokerID int32) *mockBroker {
-	return newMockBrokerAddr(t, brokerID, "localhost:0")
+// simply logged to the TestReporter and the broker exits.
+func NewMockBroker(t TestReporter, brokerID int32) *MockBroker {
+	return NewMockBrokerAddr(t, brokerID, "localhost:0")
 }
 
-// newMockBrokerAddr behaves like newMockBroker but listens on the address you give
+// NewMockBrokerAddr behaves like newMockBroker but listens on the address you give
 // it rather than just some ephemeral port.
-func newMockBrokerAddr(t *testing.T, brokerID int32, addr string) *mockBroker {
+func NewMockBrokerAddr(t TestReporter, brokerID int32, addr string) *MockBroker {
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return NewMockBrokerListener(t, brokerID, listener)
+}
+
+// NewMockBrokerListener behaves like newMockBrokerAddr but accepts connections on the listener specified.
+func NewMockBrokerListener(t TestReporter, brokerID int32, listener net.Listener) *MockBroker {
 	var err error
 
-	broker := &mockBroker{
+	broker := &MockBroker{
 		closing:      make(chan none),
 		stopper:      make(chan none),
 		t:            t,
 		brokerID:     brokerID,
 		expectations: make(chan encoder, 512),
+		listener:     listener,
 	}
 	broker.handler = broker.defaultRequestHandler
 
-	broker.listener, err = net.Listen("tcp", addr)
-	if err != nil {
-		t.Fatal(err)
-	}
 	Logger.Printf("*** mockbroker/%d listening on %s\n", brokerID, broker.listener.Addr().String())
 	_, portStr, err := net.SplitHostPort(broker.listener.Addr().String())
 	if err != nil {
@@ -268,6 +325,6 @@ func newMockBrokerAddr(t *testing.T, brokerID int32, addr string) *mockBroker {
 	return broker
 }
 
-func (b *mockBroker) Returns(e encoder) {
+func (b *MockBroker) Returns(e encoder) {
 	b.expectations <- e
 }
