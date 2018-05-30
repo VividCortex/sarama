@@ -17,11 +17,11 @@
   branch = "master"
   name = "github.com/golang/snappy"
   packages = ["."]
-  revision = "553a641470496b2327abcac10b36396bd98e45c9"
+  revision = "2e65f85255dbc3072edf28d6b5b8efc472979f5a"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "a1a98ad43d79f9b705241aca8d1ef0cc6ac014b52d146455a91a42c761abf193"
+  inputs-digest = "ab72503934c1f6e7f269e39cfa06ef3649ec13438d456533b39f445b5e6796f5"
   solver-name = "gps-cdcl"
   solver-version = 1
