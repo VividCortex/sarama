@@ -2,6 +2,13 @@
 
 
 [[projects]]
+  branch = "master"
+  name = "github.com/Shopify/sarama"
+  packages = ["."]
+  revision = "763b9ddd7a14cc63fa7d8bfb0c7d861eebe8fed5"
+  source = "github.com/VividCortex/sarama"
+
+[[projects]]
   name = "github.com/Shopify/toxiproxy"
   packages = ["client"]
   revision = "0b4f0a7eb0cfe79bc83ccbaca6d78172c9bcfc9b"
@@ -15,13 +22,37 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/eapache/go-xerial-snappy"
+  packages = ["."]
+  revision = "bb955e01b9346ac19dc29eb16586c90ded99a98c"
+
+[[projects]]
+  branch = "master"
   name = "github.com/golang/snappy"
   packages = ["."]
-  revision = "553a641470496b2327abcac10b36396bd98e45c9"
+  revision = "2e65f85255dbc3072edf28d6b5b8efc472979f5a"
+
+[[projects]]
+  name = "github.com/pierrec/lz4"
+  packages = ["."]
+  revision = "2fcda4cb7018ce05a25959d2fe08c83e3329f169"
+  version = "v1.1"
+
+[[projects]]
+  name = "github.com/pierrec/xxHash"
+  packages = ["xxHash32"]
+  revision = "f051bb7f1d1aaf1b5a665d74fb6b0217712c69f7"
+  version = "v0.1.1"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/rcrowley/go-metrics"
+  packages = ["."]
+  revision = "e2704e165165ec55d062f5919b4b29494e9fa790"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "a1a98ad43d79f9b705241aca8d1ef0cc6ac014b52d146455a91a42c761abf193"
+  inputs-digest = "e01a29dedec7f59871dc630c50b94753a09a867282062d7630435f176ba385c7"
   solver-name = "gps-cdcl"
   solver-version = 1

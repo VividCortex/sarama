@@ -33,7 +33,7 @@ func (r *SyncGroupRequest) encode(pe packetEncoder) error {
 	return nil
 }
 
-func (r *SyncGroupRequest) decode(pd packetDecoder) (err error) {
+func (r *SyncGroupRequest) decode(pd packetDecoder, version int16) (err error) {
 	if r.GroupId, err = pd.getString(); err != nil {
 		return
 	}
@@ -77,10 +77,24 @@ func (r *SyncGroupRequest) version() int16 {
 	return 0
 }
 
+func (r *SyncGroupRequest) requiredVersion() KafkaVersion {
+	return V0_9_0_0
+}
+
 func (r *SyncGroupRequest) AddGroupAssignment(memberId string, memberAssignment []byte) {
 	if r.GroupAssignments == nil {
 		r.GroupAssignments = make(map[string][]byte)
 	}
 
 	r.GroupAssignments[memberId] = memberAssignment
+}
+
+func (r *SyncGroupRequest) AddGroupAssignmentMember(memberId string, memberAssignment *ConsumerGroupMemberAssignment) error {
+	bin, err := encode(memberAssignment, nil)
+	if err != nil {
+		return err
+	}
+
+	r.AddGroupAssignment(memberId, bin)
+	return nil
 }

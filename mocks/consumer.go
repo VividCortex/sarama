@@ -20,7 +20,7 @@ type Consumer struct {
 
 // NewConsumer returns a new mock Consumer instance. The t argument should
 // be the *testing.T instance of your test method. An error will be written to it if
-// an expectation is violated. The config argument is currently unused and can be set to nil.
+// an expectation is violated. The config argument can be set to nil.
 func NewConsumer(t ErrorReporter, config *sarama.Config) *Consumer {
 	if config == nil {
 		config = sarama.NewConfig()
@@ -96,6 +96,22 @@ func (c *Consumer) Partitions(topic string) ([]int32, error) {
 	return c.metadata[topic], nil
 }
 
+func (c *Consumer) HighWaterMarks() map[string]map[int32]int64 {
+	c.l.Lock()
+	defer c.l.Unlock()
+
+	hwms := make(map[string]map[int32]int64, len(c.partitionConsumers))
+	for topic, partitionConsumers := range c.partitionConsumers {
+		hwm := make(map[int32]int64, len(partitionConsumers))
+		for partition, pc := range partitionConsumers {
+			hwm[partition] = pc.HighWaterMarkOffset()
+		}
+		hwms[topic] = hwm
+	}
+
+	return hwms
+}
+
 // Close implements the Close method from the sarama.Consumer interface. It will close
 // all registered PartitionConsumer instances.
 func (c *Consumer) Close() error {
@@ -126,7 +142,7 @@ func (c *Consumer) SetTopicMetadata(metadata map[string][]int32) {
 
 // ExpectConsumePartition will register a topic/partition, so you can set expectations on it.
 // The registered PartitionConsumer will be returned, so you can set expectations
-// on it using method chanining. Once a topic/partition is registered, you are
+// on it using method chaining. Once a topic/partition is registered, you are
 // expected to start consuming it using ConsumePartition. If that doesn't happen,
 // an error will be written to the error reporter once the mock consumer is closed. It will
 // also expect that the
@@ -162,6 +178,7 @@ func (c *Consumer) ExpectConsumePartition(topic string, partition int32, offset 
 // Errors and Messages channel, you should specify what values will be provided on these
 // channels using YieldMessage and YieldError.
 type PartitionConsumer struct {
+	highWaterMarkOffset     int64 // must be at the top of the struct because https://golang.org/pkg/sync/atomic/#pkg-note-BUG
 	l                       sync.Mutex
 	t                       ErrorReporter
 	topic                   string
@@ -173,7 +190,6 @@ type PartitionConsumer struct {
 	consumed                bool
 	errorsShouldBeDrained   bool
 	messagesShouldBeDrained bool
-	highWaterMarkOffset     int64
 }
 
 ///////////////////////////////////////////////////
@@ -228,7 +244,7 @@ func (pc *PartitionConsumer) Close() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for _ = range pc.messages {
+		for range pc.messages {
 			// drain
 		}
 	}()

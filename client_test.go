@@ -15,7 +15,7 @@ func safeClose(t testing.TB, c io.Closer) {
 }
 
 func TestSimpleClient(t *testing.T) {
-	seedBroker := newMockBroker(t, 1)
+	seedBroker := NewMockBroker(t, 1)
 
 	seedBroker.Returns(new(MetadataResponse))
 
@@ -29,7 +29,7 @@ func TestSimpleClient(t *testing.T) {
 }
 
 func TestCachedPartitions(t *testing.T) {
-	seedBroker := newMockBroker(t, 1)
+	seedBroker := NewMockBroker(t, 1)
 
 	replicas := []int32{3, 1, 5}
 	isr := []int32{5, 1}
@@ -68,7 +68,7 @@ func TestCachedPartitions(t *testing.T) {
 }
 
 func TestClientDoesntCachePartitionsForTopicsWithErrors(t *testing.T) {
-	seedBroker := newMockBroker(t, 1)
+	seedBroker := NewMockBroker(t, 1)
 
 	replicas := []int32{seedBroker.BrokerID()}
 
@@ -122,7 +122,7 @@ func TestClientDoesntCachePartitionsForTopicsWithErrors(t *testing.T) {
 }
 
 func TestClientSeedBrokers(t *testing.T) {
-	seedBroker := newMockBroker(t, 1)
+	seedBroker := NewMockBroker(t, 1)
 
 	metadataResponse := new(MetadataResponse)
 	metadataResponse.AddBroker("localhost:12345", 2)
@@ -138,8 +138,8 @@ func TestClientSeedBrokers(t *testing.T) {
 }
 
 func TestClientMetadata(t *testing.T) {
-	seedBroker := newMockBroker(t, 1)
-	leader := newMockBroker(t, 5)
+	seedBroker := NewMockBroker(t, 1)
+	leader := NewMockBroker(t, 5)
 
 	replicas := []int32{3, 1, 5}
 	isr := []int32{5, 1}
@@ -188,12 +188,23 @@ func TestClientMetadata(t *testing.T) {
 	replicas, err = client.Replicas("my_topic", 0)
 	if err != nil {
 		t.Error(err)
-	} else if replicas[0] != 1 {
-		t.Error("Incorrect (or unsorted) replica")
-	} else if replicas[1] != 3 {
-		t.Error("Incorrect (or unsorted) replica")
+	} else if replicas[0] != 3 {
+		t.Error("Incorrect (or sorted) replica")
+	} else if replicas[1] != 1 {
+		t.Error("Incorrect (or sorted) replica")
 	} else if replicas[2] != 5 {
-		t.Error("Incorrect (or unsorted) replica")
+		t.Error("Incorrect (or sorted) replica")
+	}
+
+	isr, err = client.InSyncReplicas("my_topic", 0)
+	if err != nil {
+		t.Error(err)
+	} else if len(isr) != 2 {
+		t.Error("Client returned incorrect ISRs for partition:", isr)
+	} else if isr[0] != 5 {
+		t.Error("Incorrect (or sorted) ISR:", isr)
+	} else if isr[1] != 1 {
+		t.Error("Incorrect (or sorted) ISR:", isr)
 	}
 
 	leader.Close()
@@ -202,8 +213,8 @@ func TestClientMetadata(t *testing.T) {
 }
 
 func TestClientGetOffset(t *testing.T) {
-	seedBroker := newMockBroker(t, 1)
-	leader := newMockBroker(t, 2)
+	seedBroker := NewMockBroker(t, 1)
+	leader := NewMockBroker(t, 2)
 	leaderAddr := leader.Addr()
 
 	metadata := new(MetadataResponse)
@@ -231,7 +242,7 @@ func TestClientGetOffset(t *testing.T) {
 	leader.Close()
 	seedBroker.Returns(metadata)
 
-	leader = newMockBrokerAddr(t, 2, leaderAddr)
+	leader = NewMockBrokerAddr(t, 2, leaderAddr)
 	offsetResponse = new(OffsetResponse)
 	offsetResponse.AddTopicPartition("foo", 0, 456)
 	leader.Returns(offsetResponse)
@@ -250,7 +261,7 @@ func TestClientGetOffset(t *testing.T) {
 }
 
 func TestClientReceivingUnknownTopic(t *testing.T) {
-	seedBroker := newMockBroker(t, 1)
+	seedBroker := NewMockBroker(t, 1)
 
 	metadataResponse1 := new(MetadataResponse)
 	seedBroker.Returns(metadataResponse1)
@@ -286,8 +297,8 @@ func TestClientReceivingUnknownTopic(t *testing.T) {
 }
 
 func TestClientReceivingPartialMetadata(t *testing.T) {
-	seedBroker := newMockBroker(t, 1)
-	leader := newMockBroker(t, 5)
+	seedBroker := NewMockBroker(t, 1)
+	leader := NewMockBroker(t, 5)
 
 	metadataResponse1 := new(MetadataResponse)
 	metadataResponse1.AddBroker(leader.Addr(), leader.BrokerID())
@@ -339,8 +350,8 @@ func TestClientReceivingPartialMetadata(t *testing.T) {
 }
 
 func TestClientRefreshBehaviour(t *testing.T) {
-	seedBroker := newMockBroker(t, 1)
-	leader := newMockBroker(t, 5)
+	seedBroker := NewMockBroker(t, 1)
+	leader := NewMockBroker(t, 5)
 
 	metadataResponse1 := new(MetadataResponse)
 	metadataResponse1.AddBroker(leader.Addr(), leader.BrokerID())
@@ -375,7 +386,7 @@ func TestClientRefreshBehaviour(t *testing.T) {
 }
 
 func TestClientResurrectDeadSeeds(t *testing.T) {
-	initialSeed := newMockBroker(t, 0)
+	initialSeed := NewMockBroker(t, 0)
 	emptyMetadata := new(MetadataResponse)
 	initialSeed.Returns(emptyMetadata)
 
@@ -390,9 +401,9 @@ func TestClientResurrectDeadSeeds(t *testing.T) {
 
 	client := c.(*client)
 
-	seed1 := newMockBroker(t, 1)
-	seed2 := newMockBroker(t, 2)
-	seed3 := newMockBroker(t, 3)
+	seed1 := NewMockBroker(t, 1)
+	seed2 := NewMockBroker(t, 2)
+	seed3 := NewMockBroker(t, 3)
 	addr1 := seed1.Addr()
 	addr2 := seed2.Addr()
 	addr3 := seed3.Addr()
@@ -413,8 +424,8 @@ func TestClientResurrectDeadSeeds(t *testing.T) {
 	seed1.Close()
 	seed2.Close()
 
-	seed1 = newMockBrokerAddr(t, 1, addr1)
-	seed2 = newMockBrokerAddr(t, 2, addr2)
+	seed1 = NewMockBrokerAddr(t, 1, addr1)
+	seed2 = NewMockBrokerAddr(t, 2, addr2)
 
 	seed3.Close()
 
@@ -434,9 +445,9 @@ func TestClientResurrectDeadSeeds(t *testing.T) {
 }
 
 func TestClientCoordinatorWithConsumerOffsetsTopic(t *testing.T) {
-	seedBroker := newMockBroker(t, 1)
-	staleCoordinator := newMockBroker(t, 2)
-	freshCoordinator := newMockBroker(t, 3)
+	seedBroker := NewMockBroker(t, 1)
+	staleCoordinator := NewMockBroker(t, 2)
+	freshCoordinator := NewMockBroker(t, 3)
 
 	replicas := []int32{staleCoordinator.BrokerID(), freshCoordinator.BrokerID()}
 	metadataResponse1 := new(MetadataResponse)
@@ -513,8 +524,8 @@ func TestClientCoordinatorWithConsumerOffsetsTopic(t *testing.T) {
 }
 
 func TestClientCoordinatorWithoutConsumerOffsetsTopic(t *testing.T) {
-	seedBroker := newMockBroker(t, 1)
-	coordinator := newMockBroker(t, 2)
+	seedBroker := NewMockBroker(t, 1)
+	coordinator := NewMockBroker(t, 2)
 
 	metadataResponse1 := new(MetadataResponse)
 	seedBroker.Returns(metadataResponse1)
@@ -566,7 +577,7 @@ func TestClientCoordinatorWithoutConsumerOffsetsTopic(t *testing.T) {
 }
 
 func TestClientAutorefreshShutdownRace(t *testing.T) {
-	seedBroker := newMockBroker(t, 1)
+	seedBroker := NewMockBroker(t, 1)
 
 	metadataResponse := new(MetadataResponse)
 	seedBroker.Returns(metadataResponse)
@@ -594,7 +605,7 @@ func TestClientAutorefreshShutdownRace(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Then return some metadata to the still-running background thread
-	leader := newMockBroker(t, 2)
+	leader := NewMockBroker(t, 2)
 	metadataResponse.AddBroker(leader.Addr(), leader.BrokerID())
 	metadataResponse.AddTopicPartition("foo", 0, leader.BrokerID(), []int32{2}, []int32{2}, ErrNoError)
 	seedBroker.Returns(metadataResponse)
