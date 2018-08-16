@@ -5,7 +5,7 @@
   branch = "master"
   name = "github.com/Shopify/sarama"
   packages = ["."]
-  revision = "763b9ddd7a14cc63fa7d8bfb0c7d861eebe8fed5"
+  revision = "49eb22c7c485836ab0a687af5f355888ee0f683f"
   source = "github.com/VividCortex/sarama"
 
 [[projects]]
@@ -24,7 +24,7 @@
   branch = "master"
   name = "github.com/eapache/go-xerial-snappy"
   packages = ["."]
-  revision = "bb955e01b9346ac19dc29eb16586c90ded99a98c"
+  revision = "776d5712da21bc4762676d614db1d8a64f4238b0"
 
 [[projects]]
   branch = "master"
