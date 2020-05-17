@@ -9,16 +9,23 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/VividCortex/sarama"
+	"github.com/VividCortex/sarama/tools/tls"
 )
 
 var (
-	brokerList = flag.String("brokers", os.Getenv("KAFKA_PEERS"), "The comma separated list of brokers in the Kafka cluster")
-	topic      = flag.String("topic", "", "REQUIRED: the topic to consume")
-	partitions = flag.String("partitions", "all", "The partitions to consume, can be 'all' or comma-separated numbers")
-	offset     = flag.String("offset", "newest", "The offset to start with. Can be `oldest`, `newest`")
-	verbose    = flag.Bool("verbose", false, "Whether to turn on sarama logging")
+	brokerList    = flag.String("brokers", os.Getenv("KAFKA_PEERS"), "The comma separated list of brokers in the Kafka cluster")
+	topic         = flag.String("topic", "", "REQUIRED: the topic to consume")
+	partitions    = flag.String("partitions", "all", "The partitions to consume, can be 'all' or comma-separated numbers")
+	offset        = flag.String("offset", "newest", "The offset to start with. Can be `oldest`, `newest`")
+	verbose       = flag.Bool("verbose", false, "Whether to turn on sarama logging")
+	tlsEnabled    = flag.Bool("tls-enabled", false, "Whether to enable TLS")
+	tlsSkipVerify = flag.Bool("tls-skip-verify", false, "Whether skip TLS server cert verification")
+	tlsClientCert = flag.String("tls-client-cert", "", "Client cert for client authentication (use with -tls-enabled and -tls-client-key)")
+	tlsClientKey  = flag.String("tls-client-key", "", "Client key for client authentication (use with tls-enabled and -tls-client-cert)")
+
 	bufferSize = flag.Int("buffer-size", 256, "The buffer size of the message channel.")
 
 	logger = log.New(os.Stderr, "", log.LstdFlags)
@@ -49,7 +56,19 @@ func main() {
 		printUsageErrorAndExit("-offset should be `oldest` or `newest`")
 	}
 
-	c, err := sarama.NewConsumer(strings.Split(*brokerList, ","), nil)
+	config := sarama.NewConfig()
+	if *tlsEnabled {
+		tlsConfig, err := tls.NewConfig(*tlsClientCert, *tlsClientKey)
+		if err != nil {
+			printErrorAndExit(69, "Failed to create TLS config: %s", err)
+		}
+
+		config.Net.TLS.Enable = true
+		config.Net.TLS.Config = tlsConfig
+		config.Net.TLS.Config.InsecureSkipVerify = *tlsSkipVerify
+	}
+
+	c, err := sarama.NewConsumer(strings.Split(*brokerList, ","), config)
 	if err != nil {
 		printErrorAndExit(69, "Failed to start consumer: %s", err)
 	}
@@ -67,7 +86,7 @@ func main() {
 
 	go func() {
 		signals := make(chan os.Signal, 1)
-		signal.Notify(signals, os.Kill, os.Interrupt)
+		signal.Notify(signals, syscall.SIGTERM, os.Interrupt)
 		<-signals
 		logger.Println("Initiating shutdown of consumer...")
 		close(closing)

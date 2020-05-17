@@ -5,7 +5,7 @@ messages on the standard output.
 
 ### Installation
 
-    go get github.com/Shopify/sarama/tools/kafka-console-consumer
+    go get github.com/VividCortex/sarama/tools/kafka-console-consumer
 
 ### Usage
 

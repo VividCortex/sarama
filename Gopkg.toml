@@ -26,7 +26,7 @@
 
 
 [[constraint]]
-  name = "github.com/Shopify/sarama"
+  name = "github.com/VividCortex/sarama"
   source = "github.com/VividCortex/sarama"
   branch = "master"
 

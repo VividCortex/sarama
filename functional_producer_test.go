@@ -3,6 +3,7 @@ package sarama
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -96,6 +97,83 @@ func TestFuncProducingToInvalidTopic(t *testing.T) {
 	safeClose(t, producer)
 }
 
+func TestFuncProducingIdempotentWithBrokerFailure(t *testing.T) {
+	setupFunctionalTest(t)
+	defer teardownFunctionalTest(t)
+
+	config := NewConfig()
+	config.Producer.Flush.Frequency = 250 * time.Millisecond
+	config.Producer.Idempotent = true
+	config.Producer.Timeout = 500 * time.Millisecond
+	config.Producer.Retry.Max = 1
+	config.Producer.Retry.Backoff = 500 * time.Millisecond
+	config.Producer.Return.Successes = true
+	config.Producer.Return.Errors = true
+	config.Producer.RequiredAcks = WaitForAll
+	config.Net.MaxOpenRequests = 1
+	config.Version = V0_11_0_0
+
+	producer, err := NewSyncProducer(kafkaBrokers, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer safeClose(t, producer)
+
+	// Successfully publish a few messages
+	for i := 0; i < 10; i++ {
+		_, _, err = producer.SendMessage(&ProducerMessage{
+			Topic: "test.1",
+			Value: StringEncoder(fmt.Sprintf("%d message", i)),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// break the brokers.
+	for proxyName, proxy := range Proxies {
+		if !strings.Contains(proxyName, "kafka") {
+			continue
+		}
+		if err := proxy.Disable(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// This should fail hard now
+	for i := 10; i < 20; i++ {
+		_, _, err = producer.SendMessage(&ProducerMessage{
+			Topic: "test.1",
+			Value: StringEncoder(fmt.Sprintf("%d message", i)),
+		})
+		if err == nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Now bring the proxy back up
+	for proxyName, proxy := range Proxies {
+		if !strings.Contains(proxyName, "kafka") {
+			continue
+		}
+		if err := proxy.Enable(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// We should be able to publish again (once everything calms down)
+	// (otherwise it times out)
+	for {
+		_, _, err = producer.SendMessage(&ProducerMessage{
+			Topic: "test.1",
+			Value: StringEncoder("comeback message"),
+		})
+		if err == nil {
+			break
+		}
+	}
+}
+
 func testProducingMessages(t *testing.T, config *Config) {
 	setupFunctionalTest(t)
 	defer teardownFunctionalTest(t)
@@ -173,7 +251,6 @@ func testProducingMessages(t *testing.T, config *Config) {
 				t.Fatalf("Unexpected message with index %d: %s", i, message.Value)
 			}
 		}
-
 	}
 	safeClose(t, consumer)
 	safeClose(t, client)
@@ -214,7 +291,6 @@ func validateMetrics(t *testing.T, client Client) {
 	metricValidators.register(minCountMeterValidator("request-rate", 3))
 	metricValidators.register(minCountHistogramValidator("request-size", 3))
 	metricValidators.register(minValHistogramValidator("request-size", 1))
-	metricValidators.register(minValHistogramValidator("request-latency-in-ms", minRequestLatencyInMs))
 	// and at least 2 requests to the registered broker (offset + produces)
 	metricValidators.registerForBroker(broker, minCountMeterValidator("request-rate", 2))
 	metricValidators.registerForBroker(broker, minCountHistogramValidator("request-size", 2))
@@ -248,7 +324,6 @@ func validateMetrics(t *testing.T, client Client) {
 		// in exactly 2 global responses (metadata + offset)
 		metricValidators.register(countMeterValidator("response-rate", 2))
 		metricValidators.register(minCountHistogramValidator("response-size", 2))
-		metricValidators.register(minValHistogramValidator("response-size", 1))
 		// and exactly 1 offset response for the registered broker
 		metricValidators.registerForBroker(broker, countMeterValidator("response-rate", 1))
 		metricValidators.registerForBroker(broker, minCountHistogramValidator("response-size", 1))
@@ -257,12 +332,14 @@ func validateMetrics(t *testing.T, client Client) {
 		// in at least 3 global responses (metadata + offset + produces)
 		metricValidators.register(minCountMeterValidator("response-rate", 3))
 		metricValidators.register(minCountHistogramValidator("response-size", 3))
-		metricValidators.register(minValHistogramValidator("response-size", 1))
 		// and at least 2 for the registered broker
 		metricValidators.registerForBroker(broker, minCountMeterValidator("response-rate", 2))
 		metricValidators.registerForBroker(broker, minCountHistogramValidator("response-size", 2))
 		metricValidators.registerForBroker(broker, minValHistogramValidator("response-size", 1))
 	}
+
+	// There should be no requests in flight anymore
+	metricValidators.registerForAllBrokers(broker, counterValidator("requests-in-flight", 0))
 
 	// Run the validators
 	metricValidators.run(t, client.Config().MetricRegistry)

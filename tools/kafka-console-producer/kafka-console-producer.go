@@ -8,20 +8,27 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Shopify/sarama"
 	"github.com/rcrowley/go-metrics"
+
+	"github.com/VividCortex/sarama"
+	"github.com/VividCortex/sarama/tools/tls"
 )
 
 var (
-	brokerList  = flag.String("brokers", os.Getenv("KAFKA_PEERS"), "The comma separated list of brokers in the Kafka cluster. You can also set the KAFKA_PEERS environment variable")
-	topic       = flag.String("topic", "", "REQUIRED: the topic to produce to")
-	key         = flag.String("key", "", "The key of the message to produce. Can be empty.")
-	value       = flag.String("value", "", "REQUIRED: the value of the message to produce. You can also provide the value on stdin.")
-	partitioner = flag.String("partitioner", "", "The partitioning scheme to use. Can be `hash`, `manual`, or `random`")
-	partition   = flag.Int("partition", -1, "The partition to produce to.")
-	verbose     = flag.Bool("verbose", false, "Turn on sarama logging to stderr")
-	showMetrics = flag.Bool("metrics", false, "Output metrics on successful publish to stderr")
-	silent      = flag.Bool("silent", false, "Turn off printing the message's topic, partition, and offset to stdout")
+	brokerList    = flag.String("brokers", os.Getenv("KAFKA_PEERS"), "The comma separated list of brokers in the Kafka cluster. You can also set the KAFKA_PEERS environment variable")
+	headers       = flag.String("headers", "", "The headers of the message to produce. Example: -headers=foo:bar,bar:foo")
+	topic         = flag.String("topic", "", "REQUIRED: the topic to produce to")
+	key           = flag.String("key", "", "The key of the message to produce. Can be empty.")
+	value         = flag.String("value", "", "REQUIRED: the value of the message to produce. You can also provide the value on stdin.")
+	partitioner   = flag.String("partitioner", "", "The partitioning scheme to use. Can be `hash`, `manual`, or `random`")
+	partition     = flag.Int("partition", -1, "The partition to produce to.")
+	verbose       = flag.Bool("verbose", false, "Turn on sarama logging to stderr")
+	showMetrics   = flag.Bool("metrics", false, "Output metrics on successful publish to stderr")
+	silent        = flag.Bool("silent", false, "Turn off printing the message's topic, partition, and offset to stdout")
+	tlsEnabled    = flag.Bool("tls-enabled", false, "Whether to enable TLS")
+	tlsSkipVerify = flag.Bool("tls-skip-verify", false, "Whether skip TLS server cert verification")
+	tlsClientCert = flag.String("tls-client-cert", "", "Client cert for client authentication (use with -tls-enabled and -tls-client-key)")
+	tlsClientKey  = flag.String("tls-client-key", "", "Client key for client authentication (use with tls-enabled and -tls-client-cert)")
 
 	logger = log.New(os.Stderr, "", log.LstdFlags)
 )
@@ -44,6 +51,17 @@ func main() {
 	config := sarama.NewConfig()
 	config.Producer.RequiredAcks = sarama.WaitForAll
 	config.Producer.Return.Successes = true
+
+	if *tlsEnabled {
+		tlsConfig, err := tls.NewConfig(*tlsClientCert, *tlsClientKey)
+		if err != nil {
+			printErrorAndExit(69, "Failed to create TLS config: %s", err)
+		}
+
+		config.Net.TLS.Enable = true
+		config.Net.TLS.Config = tlsConfig
+		config.Net.TLS.Config.InsecureSkipVerify = *tlsSkipVerify
+	}
 
 	switch *partitioner {
 	case "":
@@ -81,6 +99,25 @@ func main() {
 		message.Value = sarama.ByteEncoder(bytes)
 	} else {
 		printUsageErrorAndExit("-value is required, or you have to provide the value on stdin")
+	}
+
+	if *headers != "" {
+		hdrs := []sarama.RecordHeader{}
+		arrHdrs := strings.Split(*headers, ",")
+		for _, h := range arrHdrs {
+			if header := strings.Split(h, ":"); len(header) != 2 {
+				printUsageErrorAndExit("-header should be key:value. Example: -headers=foo:bar,bar:foo")
+			} else {
+				hdrs = append(hdrs, sarama.RecordHeader{
+					Key:   []byte(header[0]),
+					Value: []byte(header[1]),
+				})
+			}
+		}
+
+		if len(hdrs) != 0 {
+			message.Headers = hdrs
+		}
 	}
 
 	producer, err := sarama.NewSyncProducer(strings.Split(*brokerList, ","), config)
