@@ -136,6 +136,12 @@ type Config struct {
 		// `topic.metadata.refresh.interval.ms` in the JVM version.
 		RefreshFrequency time.Duration
 
+		// If set, Cluster metadata refreshes will be scheduled randomly each
+		// RefreshFrequency tick for a time up to RandomRefreshFrequency in the
+		// future, to avoid concurrent updates by multiple clients started together.
+		// Defaults to 0 (off).
+		RandomRefreshFrequency time.Duration
+
 		// Whether to maintain a full set of metadata for all topics, or just
 		// the minimal set that has been necessary so far. The full set is simpler
 		// and usually more convenient, but can take up a substantial amount of
@@ -613,6 +619,8 @@ func (c *Config) Validate() error {
 		return ConfigurationError("Metadata.Retry.Backoff must be >= 0")
 	case c.Metadata.RefreshFrequency < 0:
 		return ConfigurationError("Metadata.RefreshFrequency must be >= 0")
+	case c.Metadata.RandomRefreshFrequency > c.Metadata.RefreshFrequency:
+		return ConfigurationError("Metadata.RandomRefreshFrequency must be < Metadata.RefreshFrequency")
 	}
 
 	// validate the Producer values
