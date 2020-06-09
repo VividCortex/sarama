@@ -10,6 +10,7 @@
   ]
   pruneopts = "UT"
   revision = "4d2231eabe90d4ab508cc55a0c97f88976cd2f3c"
+  source = "github.com/VividCortex/sarama"
   version = "v1.26.4"
 
 [[projects]]

@@ -25,10 +25,9 @@
 #   unused-packages = true
 
 
-[[constraint]]
-  name = "github.com/VividCortex/sarama"
+[[override]]
+  name = "github.com/Shopify/sarama"
   source = "github.com/VividCortex/sarama"
-  branch = "master"
 
 [[constraint]]
   name = "github.com/Shopify/toxiproxy"
