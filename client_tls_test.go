@@ -1,16 +1,15 @@
 package sarama
 
 import (
-	"math/big"
-	"net"
-	"testing"
-	"time"
-
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"math/big"
+	"net"
+	"testing"
+	"time"
 )
 
 func TestTLS(t *testing.T) {
@@ -33,12 +32,12 @@ func TestTLS(t *testing.T) {
 	nva := time.Now().Add(1 * time.Hour)
 
 	caTemplate := &x509.Certificate{
-		Subject:      pkix.Name{CommonName: "ca"},
-		Issuer:       pkix.Name{CommonName: "ca"},
-		SerialNumber: big.NewInt(0),
-		NotAfter:     nva,
-		NotBefore:    nvb,
-		IsCA:         true,
+		Subject:               pkix.Name{CommonName: "ca"},
+		Issuer:                pkix.Name{CommonName: "ca"},
+		SerialNumber:          big.NewInt(0),
+		NotAfter:              nva,
+		NotBefore:             nvb,
+		IsCA:                  true,
 		BasicConstraintsValid: true,
 		KeyUsage:              x509.KeyUsageCertSign,
 	}
@@ -86,7 +85,7 @@ func TestTLS(t *testing.T) {
 
 	// Keep server the same - it's the client that we're testing
 	serverTLSConfig := &tls.Config{
-		Certificates: []tls.Certificate{tls.Certificate{
+		Certificates: []tls.Certificate{{
 			Certificate: [][]byte{hostDer},
 			PrivateKey:  hostkey,
 		}},
@@ -95,72 +94,79 @@ func TestTLS(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
+		name           string
 		Succeed        bool
 		Server, Client *tls.Config
 	}{
-		{ // Verify client fails if wrong CA cert pool is specified
+		{
+			name:    "Verify client fails if wrong CA cert pool is specified",
 			Succeed: false,
 			Server:  serverTLSConfig,
 			Client: &tls.Config{
 				RootCAs: systemCerts,
-				Certificates: []tls.Certificate{tls.Certificate{
+				Certificates: []tls.Certificate{{
 					Certificate: [][]byte{clientDer},
 					PrivateKey:  clientkey,
 				}},
 			},
 		},
-		{ // Verify client fails if wrong key is specified
+		{
+			name:    "Verify client fails if wrong key is specified",
 			Succeed: false,
 			Server:  serverTLSConfig,
 			Client: &tls.Config{
 				RootCAs: pool,
-				Certificates: []tls.Certificate{tls.Certificate{
+				Certificates: []tls.Certificate{{
 					Certificate: [][]byte{clientDer},
 					PrivateKey:  hostkey,
 				}},
 			},
 		},
-		{ // Verify client fails if wrong cert is specified
+		{
+			name:    "Verify client fails if wrong cert is specified",
 			Succeed: false,
 			Server:  serverTLSConfig,
 			Client: &tls.Config{
 				RootCAs: pool,
-				Certificates: []tls.Certificate{tls.Certificate{
+				Certificates: []tls.Certificate{{
 					Certificate: [][]byte{hostDer},
 					PrivateKey:  clientkey,
 				}},
 			},
 		},
-		{ // Verify client fails if no CAs are specified
+		{
+			name:    "Verify client fails if no CAs are specified",
 			Succeed: false,
 			Server:  serverTLSConfig,
 			Client: &tls.Config{
-				Certificates: []tls.Certificate{tls.Certificate{
+				Certificates: []tls.Certificate{{
 					Certificate: [][]byte{clientDer},
 					PrivateKey:  clientkey,
 				}},
 			},
 		},
-		{ // Verify client fails if no keys are specified
+		{
+			name:    "Verify client fails if no keys are specified",
 			Succeed: false,
 			Server:  serverTLSConfig,
 			Client: &tls.Config{
 				RootCAs: pool,
 			},
 		},
-		{ // Finally, verify it all works happily with client and server cert in place
+		{
+			name:    "Finally, verify it all works happily with client and server cert in place",
 			Succeed: true,
 			Server:  serverTLSConfig,
 			Client: &tls.Config{
 				RootCAs: pool,
-				Certificates: []tls.Certificate{tls.Certificate{
+				Certificates: []tls.Certificate{{
 					Certificate: [][]byte{clientDer},
 					PrivateKey:  clientkey,
 				}},
 			},
 		},
 	} {
-		doListenerTLSTest(t, tc.Succeed, tc.Server, tc.Client)
+		t.Run(tc.name, func(t *testing.T) { doListenerTLSTest(t, tc.Succeed, tc.Server, tc.Client) })
 	}
 }
 
@@ -202,5 +208,24 @@ func doListenerTLSTest(t *testing.T, expectSuccess bool, serverConfig, clientCon
 		if err == nil {
 			t.Fatal("expected failure")
 		}
+	}
+}
+
+func TestSetServerName(t *testing.T) {
+	if validServerNameTLS("kafka-server.domain.com:9093", nil).ServerName != "kafka-server.domain.com" {
+		t.Fatal("Expected kafka-server.domain.com as tls.ServerName when tls config is nil")
+	}
+
+	if validServerNameTLS("kafka-server.domain.com:9093", &tls.Config{}).ServerName != "kafka-server.domain.com" {
+		t.Fatal("Expected kafka-server.domain.com as tls.ServerName when tls config ServerName is not provided")
+	}
+
+	c := &tls.Config{ServerName: "kafka-server-other.domain.com"}
+	if validServerNameTLS("", c).ServerName != "kafka-server-other.domain.com" {
+		t.Fatal("Expected kafka-server-other.domain.com as tls.ServerName when tls config ServerName is provided")
+	}
+
+	if validServerNameTLS("host-no-port", nil).ServerName != "" {
+		t.Fatal("Expected empty ServerName as the broker addr is missing the port")
 	}
 }
