@@ -6,10 +6,11 @@ require (
 	github.com/Shopify/sarama v1.26.4
 	github.com/Shopify/toxiproxy v2.1.4+incompatible
 	github.com/davecgh/go-spew v1.1.1
+	github.com/eapache/go-resiliency v1.2.0
 	github.com/eapache/go-xerial-snappy v0.0.0-20180814174437-776d5712da21
+	github.com/eapache/queue v1.1.0
 	github.com/fortytw2/leaktest v1.3.0
 	github.com/frankban/quicktest v1.10.0 // indirect
-	github.com/golang/snappy v0.0.1
 	github.com/google/go-cmp v0.4.1 // indirect
 	github.com/jcmturner/gofork v1.0.0
 	github.com/klauspost/compress v1.10.7
