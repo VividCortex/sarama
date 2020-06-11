@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/VividCortex/sarama/breaker"
-	"github.com/VividCortex/sarama/queue"
+	"github.com/eapache/go-resiliency/breaker"
+	"github.com/eapache/queue"
 )
 
 // AsyncProducer publishes Kafka messages using a non-blocking API. It routes messages
