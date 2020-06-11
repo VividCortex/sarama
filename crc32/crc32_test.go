@@ -55,14 +55,20 @@ func TestGolden(t *testing.T) {
 
 	for _, g := range golden {
 		ieee := NewIEEE()
-		io.WriteString(ieee, g.in)
+		_, err := io.WriteString(ieee, g.in)
+		if err != nil {
+			t.Errorf("error in write String %v", err)
+		}
 		s := ieee.Sum32()
 		if s != g.ieee {
 			t.Errorf("IEEE(%s) = 0x%x want 0x%x", g.in, s, g.ieee)
 		}
 
 		castagnoli := New(castagnoliTab)
-		io.WriteString(castagnoli, g.in)
+		_, err = io.WriteString(castagnoli, g.in)
+		if err != nil {
+			t.Errorf("error in write String %v", err)
+		}
 		s = castagnoli.Sum32()
 		if s != g.castagnoli {
 			t.Errorf("Castagnoli(%s) = 0x%x want 0x%x", g.in, s, g.castagnoli)
@@ -73,8 +79,14 @@ func TestGolden(t *testing.T) {
 			// with misaligned data so we ensure that we test that
 			// too.
 			castagnoli = New(castagnoliTab)
-			io.WriteString(castagnoli, g.in[:1])
-			io.WriteString(castagnoli, g.in[1:])
+			_, err = io.WriteString(castagnoli, g.in[:1])
+			if err != nil {
+				t.Errorf("error in write String %v", err)
+			}
+			_, err = io.WriteString(castagnoli, g.in[1:])
+			if err != nil {
+				t.Errorf("error in write String %v", err)
+			}
 			s = castagnoli.Sum32()
 			if s != g.castagnoli {
 				t.Errorf("Castagnoli[misaligned](%s) = 0x%x want 0x%x", g.in, s, g.castagnoli)
@@ -157,14 +169,20 @@ func benchmark(b *testing.B, h hash.Hash32, n int64) {
 
 	// Warm up
 	h.Reset()
-	h.Write(data)
+	_, err := h.Write(data)
+	if err != nil {
+		b.Errorf("error in write String %v", err)
+	}
 	h.Sum(in)
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
 		h.Reset()
-		h.Write(data)
+		_, err := h.Write(data)
+		if err != nil {
+			b.Errorf("error in write String %v", err)
+		}
 		h.Sum(in)
 	}
 }

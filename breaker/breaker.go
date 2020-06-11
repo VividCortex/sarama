@@ -70,7 +70,9 @@ func (b *Breaker) Go(work func() error) error {
 	// errcheck complains about ignoring the error return value, but
 	// that's on purpose; if you want an error from a goroutine you have to
 	// get it over a channel or something
-	go b.doWork(state, work)
+	go func() {
+		_ = b.doWork(state, work)
+	}()
 
 	return nil
 }
