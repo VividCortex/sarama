@@ -27,7 +27,7 @@
 
 [[override]]
   name = "github.com/Shopify/sarama"
-  source = "github.com/VividCortex/sarama"
+  source = "github.com/Shopify/sarama"
 
 [[constraint]]
   name = "github.com/Shopify/toxiproxy"

@@ -3,7 +3,7 @@ package mocks
 import (
 	"sync"
 
-	"github.com/VividCortex/sarama"
+	"github.com/Shopify/sarama"
 )
 
 // SyncProducer implements sarama's SyncProducer interface for testing purposes.

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/VividCortex/sarama"
+	"github.com/Shopify/sarama"
 )
 
 func TestMockSyncProducerImplementsSyncProducerInterface(t *testing.T) {

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/VividCortex/sarama"
+	"github.com/Shopify/sarama"
 
 	"crypto/tls"
 	"crypto/x509"

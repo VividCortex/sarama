@@ -3,7 +3,7 @@ package mocks
 import (
 	"sync"
 
-	"github.com/VividCortex/sarama"
+	"github.com/Shopify/sarama"
 )
 
 // AsyncProducer implements sarama's Producer interface for testing purposes.
