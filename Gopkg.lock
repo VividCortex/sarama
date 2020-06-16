@@ -2,15 +2,15 @@
 
 
 [[projects]]
-  digest = "1:cbcf5097b55ff31c658ddc8f2794f527644390cb83d47130ebf052b350687cb9"
+  digest = "1:c1a52fb2b99e6ed7f126ee9f2b9a9d28c430b235ea78f5982f398f6768464ec8"
   name = "github.com/Shopify/sarama"
   packages = [
     ".",
+    "mocks",
     "tools/tls",
   ]
   pruneopts = "UT"
   revision = "4d2231eabe90d4ab508cc55a0c97f88976cd2f3c"
-  source = "github.com/Shopify/sarama"
   version = "v1.26.4"
 
 [[projects]]
@@ -62,12 +62,12 @@
   version = "v1.3.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:700b1e527116332847452edf9febc0c252c026785a8c3cfa3f68a8eeffb09ee8"
+  digest = "1:e4f5819333ac698d294fe04dbf640f84719658d5c7ce195b10060cc37292ce79"
   name = "github.com/golang/snappy"
   packages = ["."]
   pruneopts = "UT"
-  revision = "ff6b7dc882cf4cfba7ee0b9f7dcc1ac096c554aa"
+  revision = "2a8bb927dd31d8daada140a5d09578521ce5c36a"
+  version = "v0.0.1"
 
 [[projects]]
   digest = "1:6eb58a12ff2e21abe77271d29981dfc74211ae13500a5f34d34c5a098945d8b7"
@@ -267,23 +267,25 @@
 
 [[projects]]
   branch = "v3"
-  digest = "1:8639671727a344ac01338e004e63774356483aba4a7ad2881f5a8f0ff4affe29"
+  digest = "1:229cb0f6192914f518cc1241ede6d6f1f458b31debfa18bf3a5c9e4f7b01e24b"
   name = "gopkg.in/yaml.v3"
   packages = ["."]
   pruneopts = "UT"
-  revision = "a5ece683394c3b88d90572e44d36c93aea492c2c"
+  revision = "eeeca48fe7764f320e4870d231902bf9c1be2c08"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
     "github.com/Shopify/sarama",
+    "github.com/Shopify/sarama/mocks",
     "github.com/Shopify/sarama/tools/tls",
     "github.com/Shopify/toxiproxy/client",
     "github.com/davecgh/go-spew/spew",
+    "github.com/eapache/go-resiliency/breaker",
     "github.com/eapache/go-xerial-snappy",
+    "github.com/eapache/queue",
     "github.com/fortytw2/leaktest",
-    "github.com/golang/snappy",
     "github.com/jcmturner/gofork/encoding/asn1",
     "github.com/klauspost/compress/zstd",
     "github.com/pierrec/lz4",
