@@ -28,7 +28,7 @@ func TestCreatePartitionsResponse(t *testing.T) {
 	resp := &CreatePartitionsResponse{
 		ThrottleTime: 100 * time.Millisecond,
 		TopicPartitionErrors: map[string]*TopicPartitionError{
-			"topic": &TopicPartitionError{},
+			"topic": {},
 		},
 	}
 
@@ -48,5 +48,29 @@ func TestCreatePartitionsResponse(t *testing.T) {
 	testVersionDecodable(t, "with errors", decodedresp, createPartitionResponseFail, 0)
 	if !reflect.DeepEqual(decodedresp, resp) {
 		t.Errorf("Decoding error: expected %v but got %v", decodedresp, resp)
+	}
+}
+
+func TestTopicPartitionError(t *testing.T) {
+	// Assert that TopicPartitionError satisfies error interface
+	var err error = &TopicPartitionError{
+		Err: ErrTopicAuthorizationFailed,
+	}
+
+	got := err.Error()
+	want := ErrTopicAuthorizationFailed.Error()
+	if got != want {
+		t.Errorf("TopicPartitionError.Error() = %v; want %v", got, want)
+	}
+
+	msg := "reason why topic authorization failed"
+	err = &TopicPartitionError{
+		Err:    ErrTopicAuthorizationFailed,
+		ErrMsg: &msg,
+	}
+	got = err.Error()
+	want = ErrTopicAuthorizationFailed.Error() + " - " + msg
+	if got != want {
+		t.Errorf("TopicPartitionError.Error() = %v; want %v", got, want)
 	}
 }

@@ -31,7 +31,7 @@ var (
 func TestCreateTopicsResponse(t *testing.T) {
 	resp := &CreateTopicsResponse{
 		TopicErrors: map[string]*TopicError{
-			"topic": &TopicError{
+			"topic": {
 				Err: ErrInvalidRequest,
 			},
 		},
@@ -49,4 +49,28 @@ func TestCreateTopicsResponse(t *testing.T) {
 	resp.ThrottleTime = 100 * time.Millisecond
 
 	testResponse(t, "version 2", resp, createTopicsResponseV2)
+}
+
+func TestTopicError(t *testing.T) {
+	// Assert that TopicError satisfies error interface
+	var err error = &TopicError{
+		Err: ErrTopicAuthorizationFailed,
+	}
+
+	got := err.Error()
+	want := ErrTopicAuthorizationFailed.Error()
+	if got != want {
+		t.Errorf("TopicError.Error() = %v; want %v", got, want)
+	}
+
+	msg := "reason why topic authorization failed"
+	err = &TopicError{
+		Err:    ErrTopicAuthorizationFailed,
+		ErrMsg: &msg,
+	}
+	got = err.Error()
+	want = ErrTopicAuthorizationFailed.Error() + " - " + msg
+	if got != want {
+		t.Errorf("TopicError.Error() = %v; want %v", got, want)
+	}
 }

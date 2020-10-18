@@ -8,8 +8,9 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 
-	"github.com/VividCortex/sarama"
+	"github.com/Shopify/sarama"
 )
 
 var (
@@ -70,7 +71,7 @@ func main() {
 
 	go func() {
 		signals := make(chan os.Signal, 1)
-		signal.Notify(signals, os.Kill, os.Interrupt)
+		signal.Notify(signals, syscall.SIGTERM, os.Interrupt)
 		<-signals
 		pc.AsyncClose()
 	}()
